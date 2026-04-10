@@ -9,6 +9,7 @@ import {
   joinMatchingQueue,
   leaveMatchingQueue,
   reportResult,
+  tryMatchAllPlayers,
   subscribeToPlayerMatch,
   subscribeToPlayerInQueue,
 } from '../../lib/matchingService';
@@ -159,6 +160,17 @@ export default function PlayerMain() {
     });
     return unsub;
   }, [tournamentId, playerId]);
+
+  // Player-side matching: poll while in queue so matching works even if host is offline
+  useEffect(() => {
+    if (!inQueue || !tournamentId) return;
+    const interval = setInterval(async () => {
+      try {
+        await tryMatchAllPlayers(tournamentId);
+      } catch (_e) { /* ignore */ }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [inQueue, tournamentId]);
 
   // Auto-leave queue on timeout
   useEffect(() => {
