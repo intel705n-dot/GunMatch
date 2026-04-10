@@ -101,6 +101,7 @@ export default function HostManage() {
       entryNumber: nextNumber,
       displayName: proxyName.trim(),
       xId: null,
+      googleUid: null,
       wins: 0,
       losses: 0,
       isProxy: true,

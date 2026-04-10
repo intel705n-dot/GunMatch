@@ -2,8 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   doc, collection, onSnapshot, query, orderBy, where, getDocs,
+  collectionGroup, updateDoc, getDoc,
 } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
+import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { db, auth } from '../../lib/firebase';
 import type { Tournament, Player, Match } from '../../lib/types';
 import {
   joinMatchingQueue,
@@ -90,6 +92,10 @@ export default function PlayerMain() {
   const [showRanking, setShowRanking] = useState(false);
   const [reporting, setReporting] = useState(false);
   const [selectedWinner, setSelectedWinner] = useState<string | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [pastRecords, setPastRecords] = useState<{ tournamentName: string; wins: number; losses: number; date: string }[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [linkingGoogle, setLinkingGoogle] = useState(false);
 
   // Get player ID from localStorage
   useEffect(() => {
@@ -206,6 +212,59 @@ export default function PlayerMain() {
     }
   }, [tournamentId, currentMatch, reporting]);
 
+  const handleLinkGoogle = useCallback(async () => {
+    if (!tournamentId || !playerId || linkingGoogle) return;
+    setLinkingGoogle(true);
+    try {
+      const result = await signInWithPopup(auth, new GoogleAuthProvider());
+      const googleUid = result.user.uid;
+      await updateDoc(doc(db, 'tournaments', tournamentId, 'players', playerId), {
+        googleUid,
+      });
+    } catch (e: any) {
+      if (e.code !== 'auth/popup-closed-by-user') console.error(e);
+    } finally {
+      setLinkingGoogle(false);
+    }
+  }, [tournamentId, playerId, linkingGoogle]);
+
+  const loadPastRecords = useCallback(async () => {
+    if (!player?.googleUid || loadingHistory) return;
+    setLoadingHistory(true);
+    try {
+      const q = query(
+        collectionGroup(db, 'players'),
+        where('googleUid', '==', player.googleUid),
+      );
+      const snap = await getDocs(q);
+      const records: typeof pastRecords = [];
+      for (const d of snap.docs) {
+        const data = d.data();
+        // Get parent tournament info
+        const tournRef = d.ref.parent.parent;
+        if (!tournRef) continue;
+        const tournSnap = await getDoc(tournRef);
+        if (!tournSnap.exists()) continue;
+        const tourn = tournSnap.data();
+        // Skip current tournament
+        if (tournRef.id === tournamentId) continue;
+        records.push({
+          tournamentName: tourn.name,
+          wins: data.wins || 0,
+          losses: data.losses || 0,
+          date: tourn.createdAt?.toDate?.()?.toLocaleDateString('ja-JP') ?? '',
+        });
+      }
+      records.sort((a, b) => b.date.localeCompare(a.date));
+      setPastRecords(records);
+      setShowHistory(true);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [player?.googleUid, tournamentId, loadingHistory]);
+
   const getPlayerName = (id: string) => players.find((p) => p.id === id)?.displayName ?? '???';
   const getOpponentId = (match: Match) =>
     match.player1Id === playerId ? match.player2Id : match.player1Id;
@@ -297,6 +356,34 @@ export default function PlayerMain() {
               </div>
             </div>
           )}
+
+          {/* Google link / history */}
+          <div className="mt-3 pt-3 border-t border-slate-700/60 flex items-center justify-center gap-3">
+            {!player.googleUid ? (
+              <button
+                onClick={handleLinkGoogle}
+                disabled={linkingGoogle}
+                className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors disabled:opacity-50"
+              >
+                <svg viewBox="0 0 24 24" className="w-3.5 h-3.5">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                </svg>
+                {linkingGoogle ? '連携中...' : 'Google連携'}
+              </button>
+            ) : (
+              <button
+                onClick={loadPastRecords}
+                disabled={loadingHistory}
+                className="flex items-center gap-1.5 text-xs text-emerald-400/80 hover:text-emerald-300 transition-colors disabled:opacity-50"
+              >
+                <ChartIcon className="w-3.5 h-3.5" />
+                {loadingHistory ? '読み込み中...' : '過去の大会戦績'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -511,6 +598,44 @@ export default function PlayerMain() {
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* Past tournament records */}
+      {showHistory && pastRecords.length > 0 && (
+        <div className="mt-6">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+              <ChartIcon className="w-3.5 h-3.5" />
+              Past Tournaments
+            </h3>
+            <button
+              onClick={() => setShowHistory(false)}
+              className="text-xs text-slate-500 hover:text-slate-300"
+            >
+              閉じる
+            </button>
+          </div>
+          <div className="space-y-2">
+            {pastRecords.map((r, i) => (
+              <div key={i} className="bg-slate-800/80 rounded-xl p-3.5 border border-slate-700/60 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-bold">{r.tournamentName}</p>
+                  <p className="text-xs text-slate-500">{r.date}</p>
+                </div>
+                <div className="flex items-center gap-1 text-sm font-bold">
+                  <span className="text-emerald-400">{r.wins}</span>
+                  <span className="text-slate-600">-</span>
+                  <span className="text-red-400">{r.losses}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {showHistory && pastRecords.length === 0 && !loadingHistory && (
+        <div className="mt-6 text-center py-4 bg-slate-800 rounded-xl border border-slate-700">
+          <p className="text-sm text-slate-400">過去の大会戦績はありません</p>
         </div>
       )}
     </Layout>

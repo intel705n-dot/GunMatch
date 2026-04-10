@@ -27,6 +27,7 @@ export interface Player {
   entryNumber: number;
   displayName: string;
   xId: string | null;
+  googleUid: string | null;
   wins: number;
   losses: number;
   isProxy: boolean;
