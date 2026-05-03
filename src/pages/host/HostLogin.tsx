@@ -70,7 +70,8 @@ export default function HostLogin() {
     <Layout>
       <div className="text-center mb-8 pt-8">
         <h1 className="text-3xl font-bold mb-2">GunMatch</h1>
-        <p className="text-slate-400">ホストログイン</p>
+        <p className="text-slate-400">ログイン</p>
+        <p className="text-xs text-slate-500 mt-1">大会の主催・参加ができます</p>
       </div>
 
       {error && (

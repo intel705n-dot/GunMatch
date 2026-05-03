@@ -96,6 +96,7 @@ export default function PlayerMain() {
   const [pastRecords, setPastRecords] = useState<{ tournamentName: string; wins: number; losses: number; date: string }[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [linkingGoogle, setLinkingGoogle] = useState(false);
+  const [dropping, setDropping] = useState(false);
 
   // Get player ID from localStorage
   useEffect(() => {
@@ -121,7 +122,19 @@ export default function PlayerMain() {
   useEffect(() => {
     if (!tournamentId || !playerId) return;
     const unsub = onSnapshot(doc(db, 'tournaments', tournamentId, 'players', playerId), (snap) => {
-      if (snap.exists()) setPlayer({ id: snap.id, ...snap.data() } as Player);
+      if (snap.exists()) {
+        const data = { id: snap.id, ...snap.data() } as Player;
+        setPlayer(data);
+        // Auto-link googleUid if user is already Google-authenticated but player has no googleUid
+        if (!data.googleUid) {
+          const currentUser = auth.currentUser;
+          if (currentUser && !currentUser.isAnonymous) {
+            updateDoc(doc(db, 'tournaments', tournamentId, 'players', playerId), {
+              googleUid: currentUser.uid,
+            }).catch(() => {});
+          }
+        }
+      }
     });
     return unsub;
   }, [tournamentId, playerId]);
@@ -265,6 +278,22 @@ export default function PlayerMain() {
     }
   }, [player?.googleUid, tournamentId, loadingHistory]);
 
+  const handleDrop = useCallback(async () => {
+    if (!tournamentId || !playerId || dropping) return;
+    if (!confirm('本当にドロップ（棄権）しますか？\nこの操作はホストに復帰を依頼しない限り元に戻せません。')) return;
+    setDropping(true);
+    try {
+      // Leave queue if in queue
+      await leaveMatchingQueue(tournamentId, playerId);
+      // Set dropped flag
+      await updateDoc(doc(db, 'tournaments', tournamentId, 'players', playerId), { dropped: true });
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setDropping(false);
+    }
+  }, [tournamentId, playerId, dropping]);
+
   const getPlayerName = (id: string) => players.find((p) => p.id === id)?.displayName ?? '???';
   const getOpponentId = (match: Match) =>
     match.player1Id === playerId ? match.player2Id : match.player1Id;
@@ -287,16 +316,29 @@ export default function PlayerMain() {
             <p className="text-xs text-slate-500 mt-0.5">hosted by {tournament.hostName}</p>
           )}
         </div>
-        <button
-          onClick={() => {
-            localStorage.removeItem(`gunmatch_player_${tournamentId}`);
-            navigate(`/entry/${tournamentId}`, { replace: true });
-          }}
-          className="ml-2 p-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors shrink-0"
-          title="退室"
-        >
-          <LogOutIcon className="w-4 h-4 text-slate-400" />
-        </button>
+        <div className="flex items-center gap-1.5">
+          {auth.currentUser && !auth.currentUser.isAnonymous && (
+            <button
+              onClick={() => navigate('/host')}
+              className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors shrink-0"
+              title="マイページ"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-slate-400">
+                <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" /><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+              </svg>
+            </button>
+          )}
+          <button
+            onClick={() => {
+              localStorage.removeItem(`gunmatch_player_${tournamentId}`);
+              navigate(`/entry/${tournamentId}`, { replace: true });
+            }}
+            className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors shrink-0"
+            title="退室"
+          >
+            <LogOutIcon className="w-4 h-4 text-slate-400" />
+          </button>
+        </div>
       </div>
 
       {/* Main Stats Card - Hero Section */}
@@ -387,8 +429,17 @@ export default function PlayerMain() {
         </div>
       </div>
 
+      {/* Dropped banner */}
+      {player.dropped && !isFinished && (
+        <div className="mb-5 p-4 bg-red-900/30 border border-red-700/50 rounded-2xl text-center">
+          <XCircleIcon className="w-8 h-8 text-red-400 mx-auto mb-2" />
+          <p className="text-lg font-bold text-red-300">ドロップ済み</p>
+          <p className="text-sm text-red-400/70 mt-1">大会から棄権しました。復帰するにはホストに依頼してください。</p>
+        </div>
+      )}
+
       {/* Matching / Battle area */}
-      {!isFinished && (
+      {!isFinished && !player.dropped && (
         <div className="mb-6">
           {currentMatch ? (
             /* In battle */
@@ -636,6 +687,20 @@ export default function PlayerMain() {
       {showHistory && pastRecords.length === 0 && !loadingHistory && (
         <div className="mt-6 text-center py-4 bg-slate-800 rounded-xl border border-slate-700">
           <p className="text-sm text-slate-400">過去の大会戦績はありません</p>
+        </div>
+      )}
+
+      {/* Drop button */}
+      {!isFinished && !player.dropped && !currentMatch && (
+        <div className="mt-8 pt-4 border-t border-slate-800">
+          <button
+            onClick={handleDrop}
+            disabled={dropping}
+            className="w-full py-3 text-sm font-bold text-red-400/60 hover:text-red-400 hover:bg-red-900/20 rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+          >
+            <XCircleIcon className="w-4 h-4" />
+            {dropping ? 'ドロップ中...' : 'ドロップ（棄権）する'}
+          </button>
         </div>
       )}
     </Layout>
