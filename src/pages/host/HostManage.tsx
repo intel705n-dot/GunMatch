@@ -12,6 +12,7 @@ import Timer from '../../components/Timer';
 import Ranking from '../../components/Ranking';
 import QRCodeDisplay from '../../components/QRCodeDisplay';
 import { DUMMY_NAMES } from '../../lib/dummyNames';
+import CardGameBadge from '../../components/CardGameBadge';
 
 export default function HostManage() {
   const { tournamentId } = useParams<{ tournamentId: string }>();
@@ -104,6 +105,8 @@ export default function HostManage() {
       googleUid: null,
       wins: 0,
       losses: 0,
+      currentStreak: 0,
+      maxStreak: 0,
       isProxy: true,
       dropped: false,
       createdAt: Timestamp.now(),
@@ -121,8 +124,11 @@ export default function HostManage() {
         entryNumber: startNum + i,
         displayName: names[i],
         xId: null,
+        googleUid: null,
         wins: 0,
         losses: 0,
+        currentStreak: 0,
+        maxStreak: 0,
         isProxy: true,
         dropped: false,
         createdAt: Timestamp.now(),
@@ -153,22 +159,9 @@ export default function HostManage() {
     const ongoingMatches = matches.filter((m) => m.status === 'ongoing');
     for (const m of ongoingMatches) {
       const winnerId = Math.random() > 0.5 ? m.player1Id : m.player2Id;
-      const loserId = winnerId === m.player1Id ? m.player2Id : m.player1Id;
-      const bufferSeconds = tournament.afterBattleBuffer;
-      await updateDoc(doc(db, 'tournaments', tournamentId, 'matches', m.id), {
-        status: 'finished',
-        winnerId,
-        finishedAt: Timestamp.now(),
-        bufferUntil: Timestamp.fromMillis(Date.now() + bufferSeconds * 1000),
-      });
-      await updateDoc(doc(db, 'tournaments', tournamentId, 'players', winnerId), {
-        wins: (players.find((p) => p.id === winnerId)?.wins ?? 0) + 1,
-      });
-      await updateDoc(doc(db, 'tournaments', tournamentId, 'players', loserId), {
-        losses: (players.find((p) => p.id === loserId)?.losses ?? 0) + 1,
-      });
+      await reportResult(tournamentId, m.id, winnerId);
     }
-  }, [tournamentId, tournament, matches, players]);
+  }, [tournamentId, tournament, matches]);
 
   const finishTournament = async () => {
     if (!tournamentId) return;
@@ -269,6 +262,32 @@ export default function HostManage() {
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         </button>
+      </div>
+
+      {/* Tournament info badges */}
+      <div className="flex flex-wrap gap-2 mb-4 text-xs">
+        {tournament.cardGame && (
+          <CardGameBadge cardGameId={tournament.cardGame} cardGameOther={tournament.cardGameOther} />
+        )}
+        <span className="px-2 py-1 bg-slate-800 border border-slate-700 rounded-lg text-slate-300">
+          {tournament.seatRule === 'winner-stays' ? '勝ち残り' : tournament.seatRule === 'loser-stays' ? '負け残り' : '都度解散'}
+        </span>
+        {tournament.seatRule !== 'both-leave' && tournament.streakLimit > 0 && (
+          <span className="px-2 py-1 bg-slate-800 border border-slate-700 rounded-lg text-amber-400">
+            {tournament.streakLimit}{tournament.seatRule === 'winner-stays' ? '連勝' : '連敗'}制限
+          </span>
+        )}
+        {(tournament.bestOf ?? 1) > 1 && (
+          <span className="px-2 py-1 bg-slate-800 border border-indigo-500/50 rounded-lg text-indigo-300">
+            BO{tournament.bestOf}
+          </span>
+        )}
+        <span className="px-2 py-1 bg-slate-800 border border-slate-700 rounded-lg text-slate-300">
+          {tournament.timerMinutes}分
+        </span>
+        <span className="px-2 py-1 bg-slate-800 border border-slate-700 rounded-lg text-slate-300">
+          {players.length}人
+        </span>
       </div>
 
       {/* Controls */}
@@ -440,12 +459,38 @@ export default function HostManage() {
               return (
                 <div key={m.id} className="bg-slate-800 rounded-xl p-3 border border-slate-700">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs bg-indigo-600 px-2 py-0.5 rounded-full">卓 {m.tableNumber}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs bg-indigo-600 px-2 py-0.5 rounded-full">卓 {m.tableNumber}</span>
+                      {(m.bestOf ?? 1) > 1 && (() => {
+                        const games = m.games ?? [];
+                        const p1w = games.filter((g) => g.winnerId === m.player1Id).length;
+                        const p2w = games.filter((g) => g.winnerId === m.player2Id).length;
+                        return (
+                          <span className="text-xs bg-slate-700 px-2 py-0.5 rounded-full text-indigo-300 font-bold">
+                            BO{m.bestOf} {p1w}-{p2w}
+                          </span>
+                        );
+                      })()}
+                    </div>
                     <Timer endTime={endTime} className="text-lg" />
                   </div>
                   <div className="text-sm font-bold">
                     {getPlayerName(m.player1Id)} vs {getPlayerName(m.player2Id)}
                   </div>
+                  {(() => {
+                    const p1 = players.find((p) => p.id === m.player1Id);
+                    const p2 = players.find((p) => p.id === m.player2Id);
+                    const streak1 = p1?.currentStreak ?? 0;
+                    const streak2 = p2?.currentStreak ?? 0;
+                    if (streak1 < 2 && streak2 < 2) return null;
+                    return (
+                      <div className="text-xs text-amber-400 mt-0.5">
+                        {streak1 >= 2 && <span>{'🔥'}{p1?.displayName} {streak1}連勝中</span>}
+                        {streak1 >= 2 && streak2 >= 2 && <span> / </span>}
+                        {streak2 >= 2 && <span>{'🔥'}{p2?.displayName} {streak2}連勝中</span>}
+                      </div>
+                    );
+                  })()}
                   {/* Proxy result reporting for host */}
                   {needsProxyReport && (
                     <div className="flex gap-2 mt-2">
@@ -501,6 +546,7 @@ export default function HostManage() {
                 <th className="py-2 px-2 text-left">名前</th>
                 <th className="py-2 px-2 text-right">W</th>
                 <th className="py-2 px-2 text-right">L</th>
+                <th className="py-2 px-2 text-right">連勝</th>
                 <th className="py-2 px-2 text-center">操作</th>
               </tr>
             </thead>
@@ -523,6 +569,11 @@ export default function HostManage() {
                     </td>
                     <td className="py-2 px-2 text-right text-emerald-400">{p.wins}</td>
                     <td className="py-2 px-2 text-right text-red-400">{p.losses}</td>
+                    <td className="py-2 px-2 text-right">
+                      {(p.currentStreak ?? 0) >= 2 && (
+                        <span className="text-amber-400 font-bold text-xs">{'🔥'}{p.currentStreak}</span>
+                      )}
+                    </td>
                     <td className="py-2 px-2 text-center">
                       <div className="flex flex-col gap-1 items-center">
                         {canQueue && (

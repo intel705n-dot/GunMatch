@@ -85,6 +85,7 @@ export default function Ranking({ players, matches, tournamentName, currentPlaye
               <th className="py-2 px-2 text-right">W</th>
               <th className="py-2 px-2 text-right">L</th>
               <th className="py-2 px-2 text-right">勝率</th>
+              <th className="py-2 px-2 text-right">連勝</th>
               <th className="py-2 px-2 text-right">OMW%</th>
             </tr>
           </thead>
@@ -111,6 +112,9 @@ export default function Ranking({ players, matches, tournamentName, currentPlaye
                   <td className="py-2 px-2 text-right text-emerald-400">{p.wins}</td>
                   <td className="py-2 px-2 text-right text-red-400">{p.losses}</td>
                   <td className="py-2 px-2 text-right text-slate-300">{rate}%</td>
+                  <td className="py-2 px-2 text-right text-amber-400">
+                    {(p.maxStreak ?? 0) >= 2 ? p.maxStreak : '-'}
+                  </td>
                   <td className="py-2 px-2 text-right text-amber-400">{omw}%</td>
                 </tr>
               );

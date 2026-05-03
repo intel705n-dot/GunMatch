@@ -8,6 +8,7 @@ import { signInAnonymously, signInWithPopup, GoogleAuthProvider } from 'firebase
 import { db, auth } from '../../lib/firebase';
 import type { Tournament } from '../../lib/types';
 import Layout from '../../components/Layout';
+import CardGameBadge from '../../components/CardGameBadge';
 
 const googleProvider = new GoogleAuthProvider();
 
@@ -79,6 +80,8 @@ export default function PlayerEntry() {
         googleUid: resolvedGoogleUid,
         wins: 0,
         losses: 0,
+        currentStreak: 0,
+        maxStreak: 0,
         isProxy: false,
         dropped: false,
         createdAt: Timestamp.now(),
@@ -192,6 +195,11 @@ export default function PlayerEntry() {
     <Layout>
       <div className="text-center mb-8">
         <h1 className="text-2xl font-bold mb-2">{tournament.name}</h1>
+        {tournament.cardGame && (
+          <div className="mb-2">
+            <CardGameBadge cardGameId={tournament.cardGame} cardGameOther={tournament.cardGameOther} size="md" />
+          </div>
+        )}
         {tournament.hostName && (
           <p className="text-xs text-slate-500 mb-2">主催: {tournament.hostName}</p>
         )}

@@ -11,6 +11,9 @@ import {
   joinMatchingQueue,
   leaveMatchingQueue,
   reportResult,
+  reportGameResult,
+  correctGameResult,
+  handleSeatKeep,
   tryMatchAllPlayers,
   subscribeToPlayerMatch,
   subscribeToPlayerInQueue,
@@ -18,6 +21,7 @@ import {
 import Layout from '../../components/Layout';
 import Timer from '../../components/Timer';
 import Ranking from '../../components/Ranking';
+import CardGameBadge from '../../components/CardGameBadge';
 
 // SVG Icons
 const SwordsIcon = ({ className = '' }: { className?: string }) => (
@@ -91,12 +95,19 @@ export default function PlayerMain() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [showRanking, setShowRanking] = useState(false);
   const [reporting, setReporting] = useState(false);
-  const [selectedWinner, setSelectedWinner] = useState<string | null>(null);
+  // selectedWinner removed — replaced by selectedGameWinner for BO support
   const [showHistory, setShowHistory] = useState(false);
   const [pastRecords, setPastRecords] = useState<{ tournamentName: string; wins: number; losses: number; date: string }[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [linkingGoogle, setLinkingGoogle] = useState(false);
   const [dropping, setDropping] = useState(false);
+  // BO game-by-game state
+  const [selectedGameWinner, setSelectedGameWinner] = useState<string | null>(null);
+  const [correctionMode, setCorrectionMode] = useState(false);
+  // Post-match seat keep state
+  const [postMatchInfo, setPostMatchInfo] = useState<{ matchId: string; tableNumber: number; isStayer: boolean; winnerId: string } | null>(null);
+  const [seatCountdown, setSeatCountdown] = useState(0);
+  const [seatDecided, setSeatDecided] = useState(false);
 
   // Get player ID from localStorage
   useEffect(() => {
@@ -149,10 +160,17 @@ export default function PlayerMain() {
     return unsub;
   }, [tournamentId]);
 
+  // Track previous match to detect finish (for non-reporter post-match UI)
+  const [lastMatchRef, setLastMatchRef] = useState<{ id: string; tableNumber: number; player1Id: string; player2Id: string } | null>(null);
+
   // Subscribe to current match
   useEffect(() => {
     if (!tournamentId || !playerId) return;
     const unsub = subscribeToPlayerMatch(tournamentId, playerId, (match) => {
+      if (match) {
+        // Store reference to ongoing match
+        setLastMatchRef({ id: match.id, tableNumber: match.tableNumber, player1Id: match.player1Id, player2Id: match.player2Id });
+      }
       setCurrentMatch(match);
       if (match) {
         try { navigator.vibrate?.(200); } catch (_e) { /* silent */ }
@@ -214,16 +232,77 @@ export default function PlayerMain() {
     await leaveMatchingQueue(tournamentId, playerId);
   }, [tournamentId, playerId]);
 
-  const handleReport = useCallback(async (winnerId: string) => {
+  // Trigger post-match seat keep flow after match is decided
+  const triggerPostMatch = useCallback((matchId: string, tableNumber: number, matchWinnerId: string) => {
+    if (!tournament || !playerId || !player) return;
+
+    const seatRule = tournament.seatRule ?? 'both-leave';
+    const loserId = currentMatch
+      ? (currentMatch.player1Id === matchWinnerId ? currentMatch.player2Id : currentMatch.player1Id)
+      : matchWinnerId; // fallback
+
+    if (seatRule === 'both-leave') return; // no seat keeping
+
+    const stayerId = seatRule === 'winner-stays' ? matchWinnerId : loserId;
+    const isStayer = stayerId === playerId;
+
+    // Check streak limit
+    const streakLimit = tournament.streakLimit ?? 0;
+    if (isStayer && streakLimit > 0 && seatRule === 'winner-stays' && (player.currentStreak + 1) >= streakLimit) {
+      setPostMatchInfo({ matchId, tableNumber, isStayer: false, winnerId: matchWinnerId });
+      setSeatDecided(true);
+      return;
+    }
+
+    if (isStayer) {
+      if (seatRule === 'loser-stays') {
+        setPostMatchInfo({ matchId, tableNumber, isStayer: true, winnerId: matchWinnerId });
+        setSeatCountdown(25);
+        setSeatDecided(false);
+      } else {
+        setPostMatchInfo({ matchId, tableNumber, isStayer: true, winnerId: matchWinnerId });
+        setSeatCountdown(0);
+        setSeatDecided(false);
+      }
+    } else {
+      setPostMatchInfo({ matchId, tableNumber, isStayer: false, winnerId: matchWinnerId });
+      setSeatDecided(true);
+    }
+  }, [tournament, playerId, player, currentMatch]);
+
+  // Report a single game result (works for BO1 and BO3/BO5)
+  const handleReportGame = useCallback(async (gameWinnerId: string) => {
     if (!tournamentId || !currentMatch || reporting) return;
     setReporting(true);
     try {
-      await reportResult(tournamentId, currentMatch.id, winnerId);
+      const bestOf = currentMatch.bestOf ?? 1;
+
+      if (bestOf === 1) {
+        // BO1: direct finish
+        await reportResult(tournamentId, currentMatch.id, gameWinnerId);
+        triggerPostMatch(currentMatch.id, currentMatch.tableNumber, gameWinnerId);
+      } else {
+        // BO3/BO5: report game
+        const result = await reportGameResult(tournamentId, currentMatch.id, gameWinnerId);
+        if (result.finished && result.matchWinnerId) {
+          triggerPostMatch(currentMatch.id, currentMatch.tableNumber, result.matchWinnerId);
+        }
+      }
     } finally {
       setReporting(false);
-      setSelectedWinner(null);
+      setSelectedGameWinner(null);
     }
-  }, [tournamentId, currentMatch, reporting]);
+  }, [tournamentId, currentMatch, reporting, triggerPostMatch]);
+
+  // Correct a game result (swap winner of specific game)
+  const handleCorrectGame = useCallback(async (gameIndex: number) => {
+    if (!tournamentId || !currentMatch) return;
+    const result = await correctGameResult(tournamentId, currentMatch.id, gameIndex);
+    if (result.finished && result.matchWinnerId) {
+      setCorrectionMode(false);
+      triggerPostMatch(currentMatch.id, currentMatch.tableNumber, result.matchWinnerId);
+    }
+  }, [tournamentId, currentMatch, triggerPostMatch]);
 
   const handleLinkGoogle = useCallback(async () => {
     if (!tournamentId || !playerId || linkingGoogle) return;
@@ -278,6 +357,94 @@ export default function PlayerMain() {
     }
   }, [player?.googleUid, tournamentId, loadingHistory]);
 
+  // Countdown timer for loser-stays seat keep decision
+  useEffect(() => {
+    if (!postMatchInfo || seatDecided || seatCountdown <= 0) return;
+    const timer = setInterval(() => {
+      setSeatCountdown((prev) => {
+        if (prev <= 1) {
+          // Auto-continue (stay at table)
+          clearInterval(timer);
+          if (postMatchInfo && tournamentId) {
+            handleSeatKeep(tournamentId, postMatchInfo.matchId, playerId!, true);
+            setSeatDecided(true);
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [postMatchInfo, seatDecided, seatCountdown, tournamentId, playerId]);
+
+  const handleSeatChoice = useCallback(async (keepSeat: boolean) => {
+    if (!tournamentId || !postMatchInfo || !playerId) return;
+    setSeatDecided(true);
+    setSeatCountdown(0);
+    if (keepSeat) {
+      await handleSeatKeep(tournamentId, postMatchInfo.matchId, playerId, true);
+    }
+    // If not keeping seat, player just goes back to normal state (can manually match again)
+  }, [tournamentId, postMatchInfo, playerId]);
+
+  // Detect match finish for non-reporter: when currentMatch goes null but we had a lastMatchRef
+  // and postMatchInfo is not already set (reporter already set it)
+  useEffect(() => {
+    if (currentMatch) {
+      // New match started — clear post-match state
+      setPostMatchInfo(null);
+      setSeatDecided(false);
+      setSeatCountdown(0);
+      setCorrectionMode(false);
+      setSelectedGameWinner(null);
+      return;
+    }
+
+    // currentMatch is null — check if a match just finished
+    if (!lastMatchRef || postMatchInfo || !tournamentId || !playerId || !tournament) return;
+
+    // Fetch the finished match to get winnerId
+    const matchRef = doc(db, 'tournaments', tournamentId, 'matches', lastMatchRef.id);
+    const unsub = onSnapshot(matchRef, (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data();
+      if (data.status !== 'finished' || !data.winnerId) return;
+
+      // Only set post-match info if not already set (reporter sets it in handleReportGame)
+      setPostMatchInfo((prev) => {
+        if (prev) return prev; // Already set by reporter flow
+
+        const seatRule = tournament.seatRule ?? 'both-leave';
+        if (seatRule === 'both-leave') return null;
+
+        const winnerId = data.winnerId as string;
+        const loserId = lastMatchRef.player1Id === winnerId ? lastMatchRef.player2Id : lastMatchRef.player1Id;
+        const stayerId = seatRule === 'winner-stays' ? winnerId : loserId;
+        const isStayer = stayerId === playerId;
+
+        if (isStayer) {
+          if (seatRule === 'loser-stays') {
+            setSeatCountdown(25);
+            setSeatDecided(false);
+          } else {
+            setSeatCountdown(0);
+            setSeatDecided(false);
+          }
+        } else {
+          setSeatDecided(true);
+        }
+
+        return { matchId: lastMatchRef.id, tableNumber: lastMatchRef.tableNumber, isStayer, winnerId };
+      });
+
+      // Clear lastMatchRef after processing
+      setLastMatchRef(null);
+      unsub(); // Only need this once
+    });
+
+    return () => unsub();
+  }, [currentMatch, lastMatchRef, postMatchInfo, tournamentId, playerId, tournament]);
+
   const handleDrop = useCallback(async () => {
     if (!tournamentId || !playerId || dropping) return;
     if (!confirm('本当にドロップ（棄権）しますか？\nこの操作はホストに復帰を依頼しない限り元に戻せません。')) return;
@@ -312,9 +479,14 @@ export default function PlayerMain() {
       <div className="flex items-start justify-between mb-5">
         <div className="flex-1">
           <h1 className="text-lg font-bold tracking-tight">{tournament.name}</h1>
-          {tournament.hostName && (
-            <p className="text-xs text-slate-500 mt-0.5">hosted by {tournament.hostName}</p>
-          )}
+          <div className="flex items-center gap-2 mt-0.5">
+            {tournament.cardGame && (
+              <CardGameBadge cardGameId={tournament.cardGame} cardGameOther={tournament.cardGameOther} />
+            )}
+            {tournament.hostName && (
+              <span className="text-xs text-slate-500">hosted by {tournament.hostName}</span>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-1.5">
           {auth.currentUser && !auth.currentUser.isAnonymous && (
@@ -399,6 +571,24 @@ export default function PlayerMain() {
             </div>
           )}
 
+          {/* Current streak */}
+          {(player.currentStreak ?? 0) >= 2 && (
+            <div className="text-center mt-3 pt-3 border-t border-slate-700/60">
+              <p className="text-amber-400 font-black text-lg animate-pulse">
+                ★ {player.currentStreak}連勝中!
+              </p>
+            </div>
+          )}
+
+          {/* Max streak (show when tournament finished or no current streak) */}
+          {isFinished && (player.maxStreak ?? 0) >= 2 && (
+            <div className="text-center mt-2">
+              <p className="text-xs text-slate-400">
+                最大連勝: <span className="text-amber-400 font-bold">{player.maxStreak}</span>
+              </p>
+            </div>
+          )}
+
           {/* Google link / history */}
           <div className="mt-3 pt-3 border-t border-slate-700/60 flex items-center justify-center gap-3">
             {!player.googleUid ? (
@@ -438,92 +628,269 @@ export default function PlayerMain() {
         </div>
       )}
 
+      {/* Post-match seat keep decision */}
+      {postMatchInfo && !currentMatch && !isFinished && (
+        <div className="mb-5">
+          {postMatchInfo.isStayer && !seatDecided ? (
+            // Stayer gets to choose: stay or leave
+            <div className="bg-gradient-to-b from-amber-900/40 to-amber-950/20 border border-amber-500/40 rounded-2xl p-5 text-center">
+              <CheckCircleIcon className="w-8 h-8 text-amber-400 mx-auto mb-2" />
+              <p className="text-lg font-bold mb-1">
+                {postMatchInfo.winnerId === playerId ? '勝利！' : '対戦終了'}
+              </p>
+              <p className="text-sm text-slate-300 mb-4">
+                この卓で次の対戦を待ちますか？
+              </p>
+
+              {/* Countdown for loser-stays */}
+              {seatCountdown > 0 && (
+                <div className="mb-4">
+                  <div className="w-full bg-slate-700 rounded-full h-2 mb-1.5">
+                    <div
+                      className="bg-amber-500 h-2 rounded-full transition-all duration-1000"
+                      style={{ width: `${(seatCountdown / 25) * 100}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    残り{seatCountdown}秒 — 何もしなければ自動で続行します
+                  </p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => handleSeatChoice(true)}
+                  className="py-3 bg-amber-600 hover:bg-amber-500 rounded-xl font-bold transition-colors text-sm"
+                >
+                  続ける
+                </button>
+                <button
+                  onClick={() => handleSeatChoice(false)}
+                  className="py-3 bg-slate-700 hover:bg-slate-600 rounded-xl font-bold transition-colors text-sm"
+                >
+                  離席する
+                </button>
+              </div>
+            </div>
+          ) : seatDecided && !postMatchInfo.isStayer ? (
+            // Non-stayer: forced to leave
+            <div className="bg-slate-800 border border-slate-700 rounded-2xl p-5 text-center">
+              <p className="text-sm text-slate-300 mb-3">
+                {postMatchInfo.winnerId === playerId ? '勝利！' : '対戦結果が登録されました'}
+              </p>
+              <button
+                onClick={() => { setPostMatchInfo(null); }}
+                className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-bold transition-colors text-sm"
+              >
+                マッチングに戻る
+              </button>
+            </div>
+          ) : seatDecided && postMatchInfo.isStayer ? (
+            // Stayer decided to stay - waiting for next opponent
+            <div className="bg-gradient-to-b from-amber-900/30 to-slate-800 border border-amber-500/30 rounded-2xl p-5 text-center">
+              <div className="mb-3">
+                <div className="relative w-16 h-16 mx-auto">
+                  <div className="absolute inset-0 rounded-full bg-amber-600/20 animate-ping" />
+                  <div className="absolute inset-2 rounded-full bg-amber-600/30 animate-pulse" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <SearchIcon className="w-7 h-7 text-amber-400" />
+                  </div>
+                </div>
+              </div>
+              <p className="text-lg font-bold text-amber-300">卓キープ中</p>
+              <p className="text-sm text-slate-400 mt-1">Table {postMatchInfo.tableNumber} で次の相手を待っています...</p>
+              <button
+                onClick={async () => {
+                  if (tournamentId && playerId) {
+                    await leaveMatchingQueue(tournamentId, playerId);
+                  }
+                  setPostMatchInfo(null);
+                }}
+                className="mt-4 w-full py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-sm font-bold transition-colors text-slate-300"
+              >
+                離席する
+              </button>
+            </div>
+          ) : null}
+        </div>
+      )}
+
       {/* Matching / Battle area */}
-      {!isFinished && !player.dropped && (
+      {!isFinished && !player.dropped && !postMatchInfo && (
         <div className="mb-6">
-          {currentMatch ? (
+          {currentMatch ? (() => {
+            const bestOf = currentMatch.bestOf ?? 1;
+            const games = currentMatch.games ?? [];
+            const opponentId = getOpponentId(currentMatch);
+            const opponentName = getPlayerName(opponentId);
+            const myWins = games.filter((g) => g.winnerId === playerId).length;
+            const oppWins = games.filter((g) => g.winnerId === opponentId).length;
+            const gameNum = games.length + 1;
+            const isBo = bestOf > 1;
+            const timerSeconds = (currentMatch as Match & { timerSeconds?: number }).timerSeconds ?? tournament.timerMinutes * 60;
+
+            return (
             /* In battle */
             <div className="bg-gradient-to-b from-indigo-900/50 to-indigo-950/30 border border-indigo-500/40 rounded-2xl p-5">
+              {/* Header: Table + BO info */}
               <div className="flex items-center justify-center gap-2 mb-4">
                 <SwordsIcon className="w-4 h-4 text-indigo-400" />
                 <span className="text-xs font-bold bg-indigo-600/80 px-3 py-1 rounded-full uppercase tracking-wider">
                   Table {currentMatch.tableNumber}
+                  {isBo && ` – BO${bestOf}`}
                 </span>
-              </div>
-              <div className="text-center mb-3">
-                <p className="text-xs text-slate-400 mb-1">VS</p>
-                <p className="text-xl font-bold">{getPlayerName(getOpponentId(currentMatch))}</p>
-              </div>
-              <div className="text-center mb-3">
-                <Timer
-                  endTime={currentMatch.startedAt.toMillis() + ((currentMatch as Match & { timerSeconds?: number }).timerSeconds ?? tournament.timerMinutes * 60) * 1000}
-                />
-                <p className="text-xs text-slate-500 mt-1">※ 対戦準備時間を含めた時間です</p>
-              </div>
-
-              {/* Result reporting */}
-              <div className="mt-5 pt-4 border-t border-indigo-500/20">
-                <p className="text-center text-sm text-slate-300 mb-3 font-bold flex items-center justify-center gap-1.5">
-                  <TrophyIcon className="w-4 h-4 text-amber-400" />
-                  勝者を選択
-                </p>
-
-                {!selectedWinner ? (
-                  <div className="space-y-2.5">
-                    <button
-                      onClick={() => setSelectedWinner(playerId!)}
-                      className="w-full py-4 bg-slate-800/80 hover:bg-emerald-900/60 rounded-xl font-bold text-base transition-all border border-slate-700 hover:border-emerald-500/60 group"
-                    >
-                      <span className="flex items-center justify-center gap-2">
-                        <TrophyIcon className="w-5 h-5 text-slate-500 group-hover:text-amber-400 transition-colors" />
-                        {player.displayName}
-                      </span>
-                      <span className="block text-xs text-slate-500 font-normal mt-0.5">自分</span>
-                    </button>
-                    <button
-                      onClick={() => setSelectedWinner(getOpponentId(currentMatch))}
-                      className="w-full py-4 bg-slate-800/80 hover:bg-emerald-900/60 rounded-xl font-bold text-base transition-all border border-slate-700 hover:border-emerald-500/60 group"
-                    >
-                      <span className="flex items-center justify-center gap-2">
-                        <TrophyIcon className="w-5 h-5 text-slate-500 group-hover:text-amber-400 transition-colors" />
-                        {getPlayerName(getOpponentId(currentMatch))}
-                      </span>
-                      <span className="block text-xs text-slate-500 font-normal mt-0.5">対戦相手</span>
-                    </button>
-                  </div>
-                ) : (
-                  <div className="bg-slate-800/80 rounded-xl p-4 border border-slate-600/50">
-                    <div className="flex items-center justify-center gap-2 mb-1">
-                      <TrophyIcon className="w-5 h-5 text-amber-400" />
-                      <p className="text-lg font-bold">
-                        {selectedWinner === playerId
-                          ? player.displayName
-                          : getPlayerName(getOpponentId(currentMatch))}
-                      </p>
-                    </div>
-                    <p className="text-center text-sm text-emerald-400 mb-4">の勝利でよろしいですか？</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <button
-                        onClick={() => setSelectedWinner(null)}
-                        disabled={reporting}
-                        className="py-3 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 rounded-xl font-bold transition-colors text-sm"
-                      >
-                        戻る
-                      </button>
-                      <button
-                        onClick={() => handleReport(selectedWinner)}
-                        disabled={reporting}
-                        className="py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-xl font-bold transition-colors text-sm flex items-center justify-center gap-1.5"
-                      >
-                        <CheckCircleIcon className="w-4 h-4" />
-                        {reporting ? '送信中...' : '確定'}
-                      </button>
-                    </div>
-                  </div>
+                {isBo && (
+                  <span className="text-xs font-bold bg-slate-700 px-2 py-0.5 rounded-full text-slate-300">
+                    Game {gameNum}
+                  </span>
                 )}
               </div>
+
+              {/* Player names + score (visible for timer display on table) */}
+              <div className="text-center mb-3">
+                {isBo ? (
+                  <div className="flex items-center justify-center gap-4 mb-2">
+                    <div className="text-center">
+                      <p className="text-sm font-bold">{player.displayName}</p>
+                      <p className="text-3xl font-black tabular-nums text-emerald-400">{myWins}</p>
+                    </div>
+                    <span className="text-2xl font-thin text-slate-600">-</span>
+                    <div className="text-center">
+                      <p className="text-sm font-bold">{opponentName}</p>
+                      <p className="text-3xl font-black tabular-nums text-red-400">{oppWins}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-xs text-slate-400 mb-1">VS</p>
+                    <p className="text-xl font-bold">{opponentName}</p>
+                  </>
+                )}
+              </div>
+
+              {/* Timer */}
+              <div className="text-center mb-3">
+                {correctionMode ? (
+                  <p className="text-lg font-bold text-amber-400">タイマー停止中</p>
+                ) : (
+                  <Timer endTime={currentMatch.startedAt.toMillis() + timerSeconds * 1000} />
+                )}
+                <p className="text-xs text-slate-500 mt-1">
+                  {correctionMode ? '修正が完了するとタイマーが再開します' : '※ 対戦準備時間を含めた時間です'}
+                </p>
+              </div>
+
+              {/* Correction mode */}
+              {correctionMode ? (
+                <div className="mt-5 pt-4 border-t border-amber-500/30">
+                  <div className="flex items-center justify-center gap-2 mb-3">
+                    <span className="text-amber-400 font-bold text-sm">修正中</span>
+                  </div>
+                  <div className="space-y-2 mb-4">
+                    {games.map((g, i) => {
+                      const isMyWin = g.winnerId === playerId;
+                      return (
+                        <div key={i} className="flex items-center justify-between bg-slate-800/80 rounded-xl p-3 border border-slate-700">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-500 font-bold">Game {i + 1}</span>
+                            <TrophyIcon className="w-4 h-4 text-amber-400" />
+                            <span className="text-sm font-bold">
+                              {isMyWin ? player.displayName : opponentName}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => handleCorrectGame(i)}
+                            className="px-3 py-1 bg-amber-700 hover:bg-amber-600 rounded-lg text-xs font-bold transition-colors"
+                          >
+                            変更
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <button
+                    onClick={() => setCorrectionMode(false)}
+                    className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-xl font-bold text-sm transition-colors"
+                  >
+                    修正完了
+                  </button>
+                </div>
+              ) : (
+                /* Normal game reporting */
+                <div className="mt-5 pt-4 border-t border-indigo-500/20">
+                  <p className="text-center text-sm text-slate-300 mb-3 font-bold flex items-center justify-center gap-1.5">
+                    <TrophyIcon className="w-4 h-4 text-amber-400" />
+                    {isBo ? `Game ${gameNum} の勝者を選択` : '勝者を選択'}
+                  </p>
+
+                  {!selectedGameWinner ? (
+                    <div className="space-y-2.5">
+                      <button
+                        onClick={() => setSelectedGameWinner(playerId!)}
+                        className="w-full py-4 bg-slate-800/80 hover:bg-emerald-900/60 rounded-xl font-bold text-base transition-all border border-slate-700 hover:border-emerald-500/60 group"
+                      >
+                        <span className="flex items-center justify-center gap-2">
+                          <TrophyIcon className="w-5 h-5 text-slate-500 group-hover:text-amber-400 transition-colors" />
+                          {player.displayName}
+                        </span>
+                        <span className="block text-xs text-slate-500 font-normal mt-0.5">自分</span>
+                      </button>
+                      <button
+                        onClick={() => setSelectedGameWinner(opponentId)}
+                        className="w-full py-4 bg-slate-800/80 hover:bg-emerald-900/60 rounded-xl font-bold text-base transition-all border border-slate-700 hover:border-emerald-500/60 group"
+                      >
+                        <span className="flex items-center justify-center gap-2">
+                          <TrophyIcon className="w-5 h-5 text-slate-500 group-hover:text-amber-400 transition-colors" />
+                          {opponentName}
+                        </span>
+                        <span className="block text-xs text-slate-500 font-normal mt-0.5">対戦相手</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="bg-slate-800/80 rounded-xl p-4 border border-slate-600/50">
+                      <div className="flex items-center justify-center gap-2 mb-1">
+                        <TrophyIcon className="w-5 h-5 text-amber-400" />
+                        <p className="text-lg font-bold">
+                          {selectedGameWinner === playerId ? player.displayName : opponentName}
+                        </p>
+                      </div>
+                      <p className="text-center text-sm text-emerald-400 mb-4">
+                        {isBo ? `Game ${gameNum} の勝利でよろしいですか？` : 'の勝利でよろしいですか？'}
+                      </p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          onClick={() => setSelectedGameWinner(null)}
+                          disabled={reporting}
+                          className="py-3 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 rounded-xl font-bold transition-colors text-sm"
+                        >
+                          戻る
+                        </button>
+                        <button
+                          onClick={() => handleReportGame(selectedGameWinner)}
+                          disabled={reporting}
+                          className="py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded-xl font-bold transition-colors text-sm flex items-center justify-center gap-1.5"
+                        >
+                          <CheckCircleIcon className="w-4 h-4" />
+                          {reporting ? '送信中...' : '確定'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Correction button (only when BO > 1 and at least 1 game recorded) */}
+                  {isBo && games.length > 0 && !selectedGameWinner && (
+                    <button
+                      onClick={() => setCorrectionMode(true)}
+                      className="w-full mt-3 py-2 text-xs text-slate-500 hover:text-amber-400 transition-colors"
+                    >
+                      結果を修正する
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
-          ) : inQueue ? (
+            );
+          })() : inQueue ? (
             /* Waiting in queue */
             <div className="text-center">
               <div className="bg-slate-800 rounded-2xl p-8 border border-slate-700 mb-3">

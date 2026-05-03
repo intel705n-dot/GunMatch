@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { collection, doc, getDoc, deleteDoc, onSnapshot, query, orderBy, where, getDocs, collectionGroup } from 'firebase/firestore';
+import { collection, doc, getDoc, setDoc, deleteDoc, onSnapshot, query, orderBy, where, getDocs, collectionGroup } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { Html5Qrcode } from 'html5-qrcode';
 import { db } from '../../lib/firebase';
@@ -7,6 +7,7 @@ import { useAuth } from '../../lib/AuthContext';
 import type { Tournament } from '../../lib/types';
 import Layout from '../../components/Layout';
 import SwipeToDelete from '../../components/SwipeToDelete';
+import CardGameBadge from '../../components/CardGameBadge';
 
 type Section = 'host' | 'player';
 type HostTab = 'active' | 'upcoming' | 'finished' | 'test';
@@ -19,6 +20,10 @@ export default function HostList() {
   const [section, setSection] = useState<Section>('host');
   const [hostTab, setHostTab] = useState<HostTab>('active');
   const [hostName, setHostName] = useState('');
+  const [needsSetup, setNeedsSetup] = useState(false);
+  const [setupName, setSetupName] = useState('');
+  const [setupLoading, setSetupLoading] = useState(true);
+  const [setupSubmitting, setSetupSubmitting] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [showScanner, setShowScanner] = useState(false);
   const [scanError, setScanError] = useState('');
@@ -40,8 +45,16 @@ export default function HostList() {
   useEffect(() => {
     if (!user) return;
     getDoc(doc(db, 'hosts', user.uid)).then((snap) => {
-      if (snap.exists()) setHostName(snap.data().displayName || '');
-      else setHostName(user.displayName || user.email?.split('@')[0] || '');
+      if (snap.exists() && snap.data().displayName) {
+        setHostName(snap.data().displayName);
+        setNeedsSetup(false);
+      } else {
+        // First-time user — needs handle name setup
+        setNeedsSetup(true);
+        // Pre-fill with Google display name or email prefix as suggestion
+        setSetupName(user.displayName || user.email?.split('@')[0] || '');
+      }
+      setSetupLoading(false);
     });
   }, [user]);
 
@@ -141,11 +154,72 @@ export default function HostList() {
     if (tid) navigate(`/entry/${tid}`);
   };
 
-  if (loading) {
+  const handleSetupName = async () => {
+    if (!user || !setupName.trim()) return;
+    setSetupSubmitting(true);
+    try {
+      await setDoc(doc(db, 'hosts', user.uid), {
+        displayName: setupName.trim(),
+        createdAt: new Date(),
+      }, { merge: true });
+      setHostName(setupName.trim());
+      setNeedsSetup(false);
+    } finally {
+      setSetupSubmitting(false);
+    }
+  };
+
+  if (loading || setupLoading) {
     return <Layout><p className="text-center py-16 text-slate-400">読み込み中...</p></Layout>;
   }
 
   if (!user) return null;
+
+  // First-time setup screen
+  if (needsSetup) {
+    return (
+      <Layout>
+        <div className="pt-8 pb-4">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold mb-2">GunMatch</h1>
+            <p className="text-slate-400">ようこそ！</p>
+          </div>
+
+          <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700">
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-indigo-600/20 rounded-full flex items-center justify-center mx-auto mb-4 border border-indigo-500/30">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-400"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              </div>
+              <h2 className="text-xl font-bold mb-1">ハンドルネームを設定</h2>
+              <p className="text-sm text-slate-400">大会での表示名を決めてください</p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-slate-400 mb-1.5">ハンドルネーム</label>
+                <input
+                  value={setupName}
+                  onChange={(e) => setSetupName(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-xl focus:outline-none focus:border-indigo-500 text-lg"
+                  placeholder="表示名を入力"
+                  autoFocus
+                  onKeyDown={(e) => e.key === 'Enter' && handleSetupName()}
+                />
+                <p className="text-xs text-slate-500 mt-1.5">あとから変更できます</p>
+              </div>
+              <button
+                onClick={handleSetupName}
+                disabled={!setupName.trim() || setupSubmitting}
+                className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-500 rounded-xl font-bold text-lg transition-colors"
+              >
+                {setupSubmitting ? '設定中...' : 'はじめる'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   const hostTabCount = (key: HostTab) => tournaments.filter((t) => matchHostTab(t, key)).length;
   const filteredHost = tournaments.filter((t) => matchHostTab(t, hostTab));
@@ -288,6 +362,11 @@ export default function HostList() {
                         {t.status === 'active' ? 'LIVE' : t.status === 'finished' ? '終了' : '待機中'}
                       </span>
                     </div>
+                    {t.cardGame && (
+                      <div className="mt-1">
+                        <CardGameBadge cardGameId={t.cardGame} cardGameOther={t.cardGameOther} />
+                      </div>
+                    )}
                     <p className="text-sm text-slate-400 line-clamp-1">{t.description}</p>
                     <button
                       onClick={(e) => {
@@ -366,7 +445,10 @@ export default function HostList() {
                         {t.status === 'active' ? 'LIVE' : t.status === 'finished' ? '終了' : '待機中'}
                       </span>
                     </div>
-                    {t.hostName && <p className={`text-xs ${t.status === 'active' ? 'text-red-300/60' : 'text-slate-500'}`}>主催: {t.hostName}</p>}
+                    <div className="flex items-center gap-2 mt-1">
+                      {t.cardGame && <CardGameBadge cardGameId={t.cardGame} cardGameOther={t.cardGameOther} />}
+                      {t.hostName && <span className={`text-xs ${t.status === 'active' ? 'text-red-300/60' : 'text-slate-500'}`}>主催: {t.hostName}</span>}
+                    </div>
                     {t.description && <p className={`text-sm line-clamp-1 mt-0.5 ${t.status === 'active' ? 'text-red-200/50' : 'text-slate-400'}`}>{t.description}</p>}
                   </div>
                 ))}

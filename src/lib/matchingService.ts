@@ -12,16 +12,19 @@ import {
   Timestamp,
   onSnapshot,
   increment,
-  runTransaction,
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import type { Tournament, Match } from './types';
+import type { Tournament, Match, BestOf } from './types';
 
 // Simple lock to prevent concurrent matching attempts on the same client
 let matchingInProgress = false;
 
-export async function joinMatchingQueue(tournamentId: string, playerId: string) {
+export async function joinMatchingQueue(
+  tournamentId: string,
+  playerId: string,
+  retainTable?: number | null,
+) {
   // Check if player is dropped
   const playerDoc = await getDoc(doc(db, 'tournaments', tournamentId, 'players', playerId));
   if (playerDoc.exists() && playerDoc.data().dropped) return;
@@ -34,13 +37,13 @@ export async function joinMatchingQueue(tournamentId: string, playerId: string) 
   await addDoc(queueRef, {
     playerId,
     joinedAt: Timestamp.now(),
+    retainTable: retainTable ?? null,
   });
 
   // Player-side matching trigger: try matching immediately after joining queue
-  // This ensures matching works even if the host's device is asleep
   try {
     await tryMatchAllPlayers(tournamentId);
-  } catch (_e) { /* ignore - host polling is the fallback */ }
+  } catch (_e) { /* ignore */ }
 }
 
 export async function leaveMatchingQueue(tournamentId: string, playerId: string) {
@@ -53,7 +56,6 @@ export async function leaveMatchingQueue(tournamentId: string, playerId: string)
 }
 
 // Get cooldown window based on player count
-// 10+: avoid last 2 opponents, 5-9: avoid last 1, <5: no restriction
 function getCooldownWindow(playerCount: number): number {
   if (playerCount >= 10) return 2;
   if (playerCount >= 5) return 1;
@@ -78,17 +80,12 @@ function getRecentOpponents(
 
 /**
  * Match ALL available pairs in a single call.
- * - Reads Firestore data once, then loops to create matches until no more pairs/tables.
- * - Uses a client-side lock to prevent concurrent calls from duplicating matches.
- * - Called from both host polling AND player-side queue join.
  */
 export async function tryMatchAllPlayers(tournamentId: string): Promise<Match[]> {
-  // Prevent concurrent matching on the same client
   if (matchingInProgress) return [];
   matchingInProgress = true;
 
   try {
-    // --- Read all data ONCE ---
     const [tournDoc, queueSnap, matchesSnap, playersSnap] = await Promise.all([
       getDoc(doc(db, 'tournaments', tournamentId)),
       getDocs(query(collection(db, 'tournaments', tournamentId, 'queue'), orderBy('joinedAt', 'asc'))),
@@ -99,14 +96,12 @@ export async function tryMatchAllPlayers(tournamentId: string): Promise<Match[]>
     if (!tournDoc.exists()) return [];
     const tourn = tournDoc.data() as Tournament;
 
-    // Check matching deadline
     if (tourn.matchingDeadline && tourn.matchingDeadline.toMillis() < Date.now()) {
       return [];
     }
 
     if (queueSnap.size < 2) return [];
 
-    // Build used tables set (ongoing + buffer)
     const now = Date.now();
     const usedTables = new Set<number>();
     const allMatches: Match[] = [];
@@ -121,29 +116,23 @@ export async function tryMatchAllPlayers(tournamentId: string): Promise<Match[]>
       }
     }
 
-    // Available tables
     const availableTables: number[] = [];
     for (let i = 1; i <= tourn.tableCount; i++) {
       if (!usedTables.has(i)) availableTables.push(i);
     }
     if (availableTables.length === 0) return [];
 
-    // Cooldown calculation
     const playerCount = playersSnap.size;
     const cooldown = getCooldownWindow(playerCount);
 
-    // Queue entries (mutable - we'll remove matched ones)
     const remainingEntries = [...queueSnap.docs];
     const createdMatches: Match[] = [];
     let tableIdx = 0;
 
-    // Timer calculation
     const timerMinutes = tourn.isTest ? tourn.timerMinutes / 60 : tourn.timerMinutes;
-
-    // Track matches created in this batch for cooldown accuracy
+    const bestOf: BestOf = tourn.bestOf ?? 1;
     const batchMatches = [...allMatches];
 
-    // --- Loop: match as many pairs as possible ---
     while (remainingEntries.length >= 2 && tableIdx < availableTables.length) {
       let matched: [number, number] | null = null;
 
@@ -161,7 +150,6 @@ export async function tryMatchAllPlayers(tournamentId: string): Promise<Match[]>
         }
       }
 
-      // Fallback: if no valid pair found, take first two (release restriction)
       if (!matched) {
         matched = [0, 1];
       }
@@ -170,22 +158,37 @@ export async function tryMatchAllPlayers(tournamentId: string): Promise<Match[]>
       const entry2 = remainingEntries[matched[1]];
       const p1 = entry1.data().playerId;
       const p2 = entry2.data().playerId;
-      const tableNumber = availableTables[tableIdx];
 
-      // Create match
+      // Determine table number: if either player retains a table, use that
+      const retain1 = entry1.data().retainTable;
+      const retain2 = entry2.data().retainTable;
+      let tableNumber: number;
+      if (retain1 && !usedTables.has(retain1)) {
+        tableNumber = retain1;
+      } else if (retain2 && !usedTables.has(retain2)) {
+        tableNumber = retain2;
+      } else {
+        tableNumber = availableTables[tableIdx];
+        tableIdx++;
+      }
+      usedTables.add(tableNumber);
+
       const matchRef = await addDoc(collection(db, 'tournaments', tournamentId, 'matches'), {
         player1Id: p1,
         player2Id: p2,
         tableNumber,
+        bestOf,
+        games: [],
         status: 'ongoing',
         winnerId: null,
         startedAt: Timestamp.now(),
         finishedAt: null,
         bufferUntil: null,
+        seatKeeperId: null,
+        retainTable: null,
         timerSeconds: timerMinutes * 60,
       });
 
-      // Remove from queue
       await Promise.all([
         deleteDoc(entry1.ref),
         deleteDoc(entry2.ref),
@@ -196,22 +199,23 @@ export async function tryMatchAllPlayers(tournamentId: string): Promise<Match[]>
         player1Id: p1,
         player2Id: p2,
         tableNumber,
+        bestOf,
+        games: [],
         status: 'ongoing' as const,
         winnerId: null,
         startedAt: Timestamp.now(),
         finishedAt: null,
         bufferUntil: null,
+        seatKeeperId: null,
+        retainTable: null,
       } as Match;
 
       createdMatches.push(newMatch);
       batchMatches.push(newMatch);
 
-      // Remove matched entries from remaining (higher index first to preserve indices)
       const [lo, hi] = matched[0] < matched[1] ? [matched[0], matched[1]] : [matched[1], matched[0]];
       remainingEntries.splice(hi, 1);
       remainingEntries.splice(lo, 1);
-
-      tableIdx++;
     }
 
     return createdMatches;
@@ -220,16 +224,96 @@ export async function tryMatchAllPlayers(tournamentId: string): Promise<Match[]>
   }
 }
 
-// Legacy single-match function (kept for backwards compatibility, now calls tryMatchAllPlayers)
 export async function tryMatchPlayers(tournamentId: string): Promise<Match | null> {
   const results = await tryMatchAllPlayers(tournamentId);
   return results.length > 0 ? results[0] : null;
 }
 
+/**
+ * Report a single game result within a BO match.
+ * For BO1, this also finalizes the match.
+ * Returns whether the match is now finished.
+ */
+export async function reportGameResult(
+  tournamentId: string,
+  matchId: string,
+  gameWinnerId: string,
+): Promise<{ finished: boolean; matchWinnerId: string | null }> {
+  const matchRef = doc(db, 'tournaments', tournamentId, 'matches', matchId);
+  const matchSnap = await getDoc(matchRef);
+  if (!matchSnap.exists()) return { finished: false, matchWinnerId: null };
+  const matchData = matchSnap.data();
+
+  const bestOf: BestOf = matchData.bestOf ?? 1;
+  const games = [...(matchData.games || []), { winnerId: gameWinnerId }];
+  const winsNeeded = Math.ceil(bestOf / 2);
+
+  // Count wins
+  const p1Wins = games.filter((g: { winnerId: string }) => g.winnerId === matchData.player1Id).length;
+  const p2Wins = games.filter((g: { winnerId: string }) => g.winnerId === matchData.player2Id).length;
+
+  const matchWinnerId = p1Wins >= winsNeeded ? matchData.player1Id :
+                        p2Wins >= winsNeeded ? matchData.player2Id : null;
+
+  if (matchWinnerId) {
+    // Match finished — finalize
+    await reportResult(tournamentId, matchId, matchWinnerId, games);
+    return { finished: true, matchWinnerId };
+  } else {
+    // Match continues — just update games array
+    await updateDoc(matchRef, { games });
+    return { finished: false, matchWinnerId: null };
+  }
+}
+
+/**
+ * Correct a game result within a BO match.
+ * Swaps the winner of a specific game index.
+ * Returns whether the match should now be finished (if correction causes someone to reach winsNeeded).
+ */
+export async function correctGameResult(
+  tournamentId: string,
+  matchId: string,
+  gameIndex: number,
+): Promise<{ finished: boolean; matchWinnerId: string | null }> {
+  const matchRef = doc(db, 'tournaments', tournamentId, 'matches', matchId);
+  const matchSnap = await getDoc(matchRef);
+  if (!matchSnap.exists()) return { finished: false, matchWinnerId: null };
+  const matchData = matchSnap.data();
+
+  const games = [...(matchData.games || [])];
+  if (gameIndex < 0 || gameIndex >= games.length) return { finished: false, matchWinnerId: null };
+
+  // Swap winner
+  const currentWinner = games[gameIndex].winnerId;
+  const newWinner = currentWinner === matchData.player1Id ? matchData.player2Id : matchData.player1Id;
+  games[gameIndex] = { winnerId: newWinner };
+
+  const bestOf: BestOf = matchData.bestOf ?? 1;
+  const winsNeeded = Math.ceil(bestOf / 2);
+  const p1Wins = games.filter((g: { winnerId: string }) => g.winnerId === matchData.player1Id).length;
+  const p2Wins = games.filter((g: { winnerId: string }) => g.winnerId === matchData.player2Id).length;
+
+  const matchWinnerId = p1Wins >= winsNeeded ? matchData.player1Id :
+                        p2Wins >= winsNeeded ? matchData.player2Id : null;
+
+  if (matchWinnerId) {
+    await reportResult(tournamentId, matchId, matchWinnerId, games);
+    return { finished: true, matchWinnerId };
+  } else {
+    await updateDoc(matchRef, { games });
+    return { finished: false, matchWinnerId: null };
+  }
+}
+
+/**
+ * Finalize a match with a winner. Updates stats, streaks, buffer.
+ */
 export async function reportResult(
   tournamentId: string,
   matchId: string,
   winnerId: string,
+  games?: { winnerId: string }[],
 ) {
   const matchRef = doc(db, 'tournaments', tournamentId, 'matches', matchId);
   const matchSnap = await getDoc(matchRef);
@@ -244,17 +328,63 @@ export async function reportResult(
 
   const bufferUntil = Timestamp.fromMillis(Date.now() + bufferSeconds * 1000);
 
-  await updateDoc(matchRef, {
+  const updateData: Record<string, unknown> = {
     status: 'finished',
     winnerId,
     finishedAt: Timestamp.now(),
     bufferUntil,
-  });
+  };
+  if (games) {
+    updateData.games = games;
+  }
+  await updateDoc(matchRef, updateData);
 
+  // Update wins/losses
   const winnerRef = doc(db, 'tournaments', tournamentId, 'players', winnerId);
   const loserRef = doc(db, 'tournaments', tournamentId, 'players', loserId);
-  await updateDoc(winnerRef, { wins: increment(1) });
-  await updateDoc(loserRef, { losses: increment(1) });
+
+  // Update streaks
+  const winnerSnap = await getDoc(winnerRef);
+  const loserSnap = await getDoc(loserRef);
+  const winnerData = winnerSnap.data();
+  const loserData = loserSnap.data();
+
+  const newWinnerStreak = (winnerData?.currentStreak ?? 0) + 1;
+  const winnerMaxStreak = Math.max(winnerData?.maxStreak ?? 0, newWinnerStreak);
+
+  await updateDoc(winnerRef, {
+    wins: increment(1),
+    currentStreak: newWinnerStreak,
+    maxStreak: winnerMaxStreak,
+  });
+  await updateDoc(loserRef, {
+    losses: increment(1),
+    currentStreak: 0,
+  });
+}
+
+/**
+ * Handle seat keeping after match result.
+ */
+export async function handleSeatKeep(
+  tournamentId: string,
+  matchId: string,
+  playerId: string,
+  keepSeat: boolean,
+) {
+  if (!keepSeat) return;
+
+  const matchRef = doc(db, 'tournaments', tournamentId, 'matches', matchId);
+  const matchSnap = await getDoc(matchRef);
+  if (!matchSnap.exists()) return;
+  const matchData = matchSnap.data();
+
+  await updateDoc(matchRef, {
+    seatKeeperId: playerId,
+    retainTable: matchData.tableNumber,
+  });
+
+  await joinMatchingQueue(tournamentId, playerId, matchData.tableNumber);
 }
 
 export function subscribeToQueue(
