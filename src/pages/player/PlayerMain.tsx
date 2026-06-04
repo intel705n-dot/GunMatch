@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  doc, collection, onSnapshot, query, orderBy, where, getDocs,
+  doc, collection, onSnapshot, query, orderBy, where, getDocs, limit,
   collectionGroup, updateDoc, getDoc,
 } from 'firebase/firestore';
 import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
@@ -14,7 +14,6 @@ import {
   reportGameResult,
   correctGameResult,
   handleSeatKeep,
-  tryMatchAllPlayers,
   subscribeToPlayerMatch,
   subscribeToPlayerInQueue,
 } from '../../lib/matchingService';
@@ -91,8 +90,9 @@ export default function PlayerMain() {
   const [currentMatch, setCurrentMatch] = useState<Match | null>(null);
   const [inQueue, setInQueue] = useState(false);
   const [matchHistory, setMatchHistory] = useState<Match[]>([]);
-  const [allMatches, setAllMatches] = useState<Match[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
+  const [rankingMatches, setRankingMatches] = useState<Match[]>([]);
+  const [knownPlayerNames, setKnownPlayerNames] = useState<Record<string, string>>({});
   const [showRanking, setShowRanking] = useState(false);
   const [reporting, setReporting] = useState(false);
   // selectedWinner removed — replaced by selectedGameWinner for BO support
@@ -150,16 +150,6 @@ export default function PlayerMain() {
     return unsub;
   }, [tournamentId, playerId]);
 
-  // Subscribe to all players (for ranking & names)
-  useEffect(() => {
-    if (!tournamentId) return;
-    const q = query(collection(db, 'tournaments', tournamentId, 'players'), orderBy('entryNumber', 'asc'));
-    const unsub = onSnapshot(q, (snap) => {
-      setPlayers(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Player)));
-    });
-    return unsub;
-  }, [tournamentId]);
-
   // Track previous match to detect finish (for non-reporter post-match UI)
   const [lastMatchRef, setLastMatchRef] = useState<{ id: string; tableNumber: number; player1Id: string; player2Id: string } | null>(null);
 
@@ -173,7 +163,7 @@ export default function PlayerMain() {
       }
       setCurrentMatch(match);
       if (match) {
-        try { navigator.vibrate?.(200); } catch (_e) { /* silent */ }
+        try { navigator.vibrate?.(200); } catch { /* silent */ }
       }
     });
     return unsub;
@@ -186,28 +176,86 @@ export default function PlayerMain() {
     return unsub;
   }, [tournamentId, playerId]);
 
-  // Load match history
+  // Load only this player's match history. The old version subscribed to every
+  // match in the tournament, which multiplied reads by participant count.
   useEffect(() => {
     if (!tournamentId || !playerId) return;
     const matchesRef = collection(db, 'tournaments', tournamentId, 'matches');
-    const unsub = onSnapshot(query(matchesRef, orderBy('startedAt', 'desc')), (snap) => {
-      const all = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Match));
-      setAllMatches(all);
-      setMatchHistory(all.filter((m) => m.player1Id === playerId || m.player2Id === playerId));
+    let player1Matches: Match[] = [];
+    let player2Matches: Match[] = [];
+
+    const commitHistory = () => {
+      const merged = new Map<string, Match>();
+      for (const m of [...player1Matches, ...player2Matches]) merged.set(m.id, m);
+      setMatchHistory(
+        [...merged.values()]
+          .sort((a, b) => b.startedAt.toMillis() - a.startedAt.toMillis())
+          .slice(0, 20),
+      );
+    };
+
+    const q1 = query(matchesRef, where('player1Id', '==', playerId), orderBy('startedAt', 'desc'), limit(20));
+    const q2 = query(matchesRef, where('player2Id', '==', playerId), orderBy('startedAt', 'desc'), limit(20));
+    const unsub1 = onSnapshot(q1, (snap) => {
+      player1Matches = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Match));
+      commitHistory();
     });
-    return unsub;
+    const unsub2 = onSnapshot(q2, (snap) => {
+      player2Matches = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Match));
+      commitHistory();
+    });
+
+    return () => {
+      unsub1();
+      unsub2();
+    };
   }, [tournamentId, playerId]);
 
-  // Player-side matching: poll while in queue so matching works even if host is offline
   useEffect(() => {
-    if (!inQueue || !tournamentId) return;
-    const interval = setInterval(async () => {
-      try {
-        await tryMatchAllPlayers(tournamentId);
-      } catch (_e) { /* ignore */ }
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [inQueue, tournamentId]);
+    if (!tournamentId || tournament?.status !== 'finished' || !showRanking) return;
+    let cancelled = false;
+
+    Promise.all([
+      getDocs(query(collection(db, 'tournaments', tournamentId, 'players'), orderBy('entryNumber', 'asc'))),
+      getDocs(query(collection(db, 'tournaments', tournamentId, 'matches'), orderBy('startedAt', 'desc'))),
+    ]).then(([playersSnap, matchesSnap]) => {
+      if (cancelled) return;
+      setPlayers(playersSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Player)));
+      setRankingMatches(matchesSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Match)));
+    }).catch((e) => console.error(e));
+
+    return () => { cancelled = true; };
+  }, [tournamentId, tournament?.status, showRanking]);
+
+  useEffect(() => {
+    if (!tournamentId || !playerId) return;
+    const ids = new Set<string>();
+    const collect = (m: Match | null) => {
+      if (!m) return;
+      if (m.player1Id !== playerId && !m.player1Name && !knownPlayerNames[m.player1Id]) ids.add(m.player1Id);
+      if (m.player2Id !== playerId && !m.player2Name && !knownPlayerNames[m.player2Id]) ids.add(m.player2Id);
+    };
+    collect(currentMatch);
+    for (const m of matchHistory) collect(m);
+    if (ids.size === 0) return;
+
+    let cancelled = false;
+    Promise.all([...ids].map(async (id) => {
+      const snap = await getDoc(doc(db, 'tournaments', tournamentId, 'players', id));
+      return snap.exists() ? [id, snap.data().displayName as string] as const : null;
+    })).then((entries) => {
+      if (cancelled) return;
+      setKnownPlayerNames((prev) => {
+        const next = { ...prev };
+        for (const entry of entries) {
+          if (entry) next[entry[0]] = entry[1];
+        }
+        return next;
+      });
+    }).catch((e) => console.error(e));
+
+    return () => { cancelled = true; };
+  }, [tournamentId, playerId, currentMatch, matchHistory, knownPlayerNames]);
 
   // Auto-leave queue on timeout
   useEffect(() => {
@@ -313,8 +361,9 @@ export default function PlayerMain() {
       await updateDoc(doc(db, 'tournaments', tournamentId, 'players', playerId), {
         googleUid,
       });
-    } catch (e: any) {
-      if (e.code !== 'auth/popup-closed-by-user') console.error(e);
+    } catch (e: unknown) {
+      const code = typeof e === 'object' && e && 'code' in e ? String(e.code) : '';
+      if (code !== 'auth/popup-closed-by-user') console.error(e);
     } finally {
       setLinkingGoogle(false);
     }
@@ -461,7 +510,12 @@ export default function PlayerMain() {
     }
   }, [tournamentId, playerId, dropping]);
 
-  const getPlayerName = (id: string) => players.find((p) => p.id === id)?.displayName ?? '???';
+  const getPlayerName = (id: string, match?: Match | null) => {
+    if (id === playerId) return player?.displayName ?? '???';
+    if (match?.player1Id === id && match.player1Name) return match.player1Name;
+    if (match?.player2Id === id && match.player2Name) return match.player2Name;
+    return knownPlayerNames[id] ?? players.find((p) => p.id === id)?.displayName ?? '???';
+  };
   const getOpponentId = (match: Match) =>
     match.player1Id === playerId ? match.player2Id : match.player1Id;
 
@@ -722,7 +776,7 @@ export default function PlayerMain() {
             const bestOf = currentMatch.bestOf ?? 1;
             const games = currentMatch.games ?? [];
             const opponentId = getOpponentId(currentMatch);
-            const opponentName = getPlayerName(opponentId);
+            const opponentName = getPlayerName(opponentId, currentMatch);
             const myWins = games.filter((g) => g.winnerId === playerId).length;
             const oppWins = games.filter((g) => g.winnerId === opponentId).length;
             const gameNum = games.length + 1;
@@ -961,7 +1015,7 @@ export default function PlayerMain() {
           {showRanking && (
             <Ranking
               players={players}
-              matches={allMatches}
+              matches={rankingMatches}
               tournamentName={tournament.name}
               currentPlayerId={playerId}
             />
@@ -992,7 +1046,7 @@ export default function PlayerMain() {
                       {matchHistory.length - i}
                     </div>
                     <div>
-                      <p className="text-sm font-bold">{getPlayerName(opponentId)}</p>
+                      <p className="text-sm font-bold">{getPlayerName(opponentId, m)}</p>
                       <p className="text-xs text-stone-400">
                         Table {m.tableNumber}
                       </p>

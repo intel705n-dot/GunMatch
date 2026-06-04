@@ -1,12 +1,13 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  doc, collection, onSnapshot, updateDoc, addDoc, query, orderBy,
+  doc, collection, onSnapshot, updateDoc, setDoc, query, orderBy,
   Timestamp, getDocs, where, deleteDoc, runTransaction,
 } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import type { Tournament, Player, Match } from '../../lib/types';
 import { tryMatchAllPlayers, joinMatchingQueue, reportResult } from '../../lib/matchingService';
+import { createTournamentPlayer } from '../../lib/playerService';
 import Layout from '../../components/Layout';
 import Timer from '../../components/Timer';
 import Ranking from '../../components/Ranking';
@@ -26,7 +27,6 @@ export default function HostManage() {
   const [editingMatch, setEditingMatch] = useState<string | null>(null);
   const [showRanking, setShowRanking] = useState(false);
   const [queuePlayerIds, setQueuePlayerIds] = useState<Set<string>>(new Set());
-  const [ongoingPlayerIds, setOngoingPlayerIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!tournamentId) return;
@@ -63,8 +63,7 @@ export default function HostManage() {
     return unsub;
   }, [tournamentId]);
 
-  // Track which players are in ongoing matches
-  useEffect(() => {
+  const ongoingPlayerIds = useMemo(() => {
     const ids = new Set<string>();
     for (const m of matches) {
       if (m.status === 'ongoing') {
@@ -72,19 +71,38 @@ export default function HostManage() {
         ids.add(m.player2Id);
       }
     }
-    setOngoingPlayerIds(ids);
+    return ids;
   }, [matches]);
 
-  // Auto-matching: poll queue and try to match all available pairs
+  // Auto-matching: run on queue/table availability changes instead of polling.
   useEffect(() => {
-    if (!tournamentId || !tournament || tournament.status !== 'active') return;
-    const interval = setInterval(async () => {
+    if (!tournamentId || !tournament || tournament.status !== 'active' || queuePlayerIds.size < 2) return;
+
+    const now = Date.now();
+    let usedTables = 0;
+    let earliestBufferEnd = Number.POSITIVE_INFINITY;
+    for (const m of matches) {
+      if (m.status === 'ongoing') {
+        usedTables++;
+      } else if (m.status === 'finished' && m.bufferUntil && m.bufferUntil.toMillis() > now) {
+        usedTables++;
+        earliestBufferEnd = Math.min(earliestBufferEnd, m.bufferUntil.toMillis());
+      }
+    }
+
+    const delayMs = usedTables < tournament.tableCount
+      ? 100
+      : Number.isFinite(earliestBufferEnd)
+        ? Math.max(500, earliestBufferEnd - now + 200)
+        : 5000;
+
+    const timer = window.setTimeout(async () => {
       try {
         await tryMatchAllPlayers(tournamentId);
-      } catch (_e) { /* ignore */ }
-    }, 1500);
-    return () => clearInterval(interval);
-  }, [tournamentId, tournament?.status]);
+      } catch { /* ignore */ }
+    }, delayMs);
+    return () => window.clearTimeout(timer);
+  }, [tournamentId, tournament, queuePlayerIds, matches]);
 
   const toggleEntry = async () => {
     if (!tournamentId || !tournament) return;
@@ -97,19 +115,17 @@ export default function HostManage() {
 
   const addProxyPlayer = async () => {
     if (!tournamentId || !proxyName.trim()) return;
-    const nextNumber = players.length + 1;
-    await addDoc(collection(db, 'tournaments', tournamentId, 'players'), {
-      entryNumber: nextNumber,
+    await createTournamentPlayer(tournamentId, {
       displayName: proxyName.trim(),
       xId: null,
       googleUid: null,
+      authUid: null,
       wins: 0,
       losses: 0,
       currentStreak: 0,
       maxStreak: 0,
       isProxy: true,
       dropped: false,
-      createdAt: Timestamp.now(),
     });
     setProxyName('');
   };
@@ -118,20 +134,18 @@ export default function HostManage() {
     if (!tournamentId) return;
     const shuffled = [...DUMMY_NAMES].sort(() => Math.random() - 0.5);
     const names = shuffled.slice(0, dummyCount);
-    const startNum = players.length + 1;
-    for (let i = 0; i < names.length; i++) {
-      await addDoc(collection(db, 'tournaments', tournamentId, 'players'), {
-        entryNumber: startNum + i,
-        displayName: names[i],
+    for (const name of names) {
+      await createTournamentPlayer(tournamentId, {
+        displayName: name,
         xId: null,
         googleUid: null,
+        authUid: null,
         wins: 0,
         losses: 0,
         currentStreak: 0,
         maxStreak: 0,
         isProxy: true,
         dropped: false,
-        createdAt: Timestamp.now(),
       });
     }
   };
@@ -140,18 +154,24 @@ export default function HostManage() {
     if (!tournamentId || !tournament?.isTest) return;
     // Add all non-dropped dummy players to queue, then auto-report results
     const activePlayers = players.filter((p) => p.isProxy && !p.dropped);
-    const queueRef = collection(db, 'tournaments', tournamentId, 'queue');
 
     for (const p of activePlayers) {
-      const existing = await getDocs(query(queueRef, where('playerId', '==', p.id)));
+      const queueDocRef = doc(db, 'tournaments', tournamentId, 'queue', p.id);
       // Check if player is in an ongoing match
       const matchesRef = collection(db, 'tournaments', tournamentId, 'matches');
       const m1 = await getDocs(query(matchesRef, where('player1Id', '==', p.id), where('status', '==', 'ongoing')));
       const m2 = await getDocs(query(matchesRef, where('player2Id', '==', p.id), where('status', '==', 'ongoing')));
-      if (existing.empty && m1.empty && m2.empty) {
-        await addDoc(queueRef, { playerId: p.id, joinedAt: Timestamp.now() });
+      if (m1.empty && m2.empty) {
+        await setDoc(queueDocRef, {
+          playerId: p.id,
+          playerName: p.displayName,
+          queuedByUid: null,
+          joinedAt: Timestamp.now(),
+          retainTable: null,
+        });
       }
     }
+    await tryMatchAllPlayers(tournamentId);
   }, [tournamentId, tournament?.isTest, players]);
 
   const autoReportResults = useCallback(async () => {
@@ -256,9 +276,7 @@ export default function HostManage() {
     if (!tournamentId) return;
     if (!confirm('このプレイヤーをドロップ（棄権）しますか？')) return;
     // Remove from queue if in queue
-    const queueRef = collection(db, 'tournaments', tournamentId, 'queue');
-    const qSnap = await getDocs(query(queueRef, where('playerId', '==', playerId)));
-    for (const d of qSnap.docs) await deleteDoc(d.ref);
+    await deleteDoc(doc(db, 'tournaments', tournamentId, 'queue', playerId));
     // Set dropped flag
     await updateDoc(doc(db, 'tournaments', tournamentId, 'players', playerId), { dropped: true });
   };

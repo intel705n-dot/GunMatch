@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import {
-  collection, addDoc, doc, getDoc, getDocs, deleteDoc, Timestamp, query, orderBy,
+  collection, addDoc, doc, getDoc, getDocs, deleteDoc, setDoc, Timestamp, query, orderBy,
 } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { db } from '../../lib/firebase';
-import { useAuth } from '../../lib/AuthContext';
+import { useAuth } from '../../lib/useAuth';
 import type { SeatRule, BestOf, Preset } from '../../lib/types';
 import { CARD_GAME_GROUPS, getCardGame } from '../../lib/cardGames';
 import Layout from '../../components/Layout';
@@ -212,7 +212,13 @@ export default function HostCreate() {
         entryOpen: false,
         status: 'waiting',
         isTest,
+        playerCount: 0,
         createdAt: Timestamp.now(),
+      });
+      await setDoc(doc(db, 'tournaments', docRef.id, 'meta', 'counters'), {
+        nextEntryNumber: 1,
+        playerCount: 0,
+        updatedAt: Timestamp.now(),
       });
       setCreatedId(docRef.id);
     } catch (e) {

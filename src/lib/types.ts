@@ -28,6 +28,7 @@ export interface Tournament {
   isTest: boolean;
   seatRule: SeatRule;
   streakLimit: number; // 0 = no limit, 2-10 = forced leave after N consecutive stays
+  playerCount?: number;
   createdAt: Timestamp;
 }
 
@@ -54,6 +55,7 @@ export interface Player {
   displayName: string;
   xId: string | null;
   googleUid: string | null;
+  authUid?: string | null;
   wins: number;
   losses: number;
   currentStreak: number;
@@ -71,6 +73,8 @@ export interface Match {
   id: string;
   player1Id: string;
   player2Id: string;
+  player1Name?: string;
+  player2Name?: string;
   tableNumber: number;
   bestOf: BestOf;
   games: GameResult[];            // per-game results for BO3/BO5
@@ -81,10 +85,13 @@ export interface Match {
   bufferUntil: Timestamp | null;
   seatKeeperId: string | null;   // who keeps the table (null = both leave)
   retainTable: number | null;     // table number being retained
+  createdByUid?: string | null;
 }
 
 export interface WaitingEntry {
   playerId: string;
+  playerName?: string;
+  queuedByUid?: string | null;
   joinedAt: Timestamp;
   retainTable?: number | null; // if set, this player keeps this table number
 }

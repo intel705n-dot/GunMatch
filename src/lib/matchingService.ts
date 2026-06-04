@@ -4,11 +4,13 @@ import {
   getDoc,
   getDocs,
   addDoc,
+  setDoc,
   updateDoc,
   deleteDoc,
   query,
   where,
   orderBy,
+  limit,
   Timestamp,
   onSnapshot,
   increment,
@@ -18,8 +20,8 @@ import {
   type Transaction,
   type Unsubscribe,
 } from 'firebase/firestore';
-import { db } from './firebase';
-import type { Tournament, Match, BestOf } from './types';
+import { auth, db } from './firebase';
+import type { Tournament, Match, BestOf, WaitingEntry } from './types';
 
 // Simple lock to prevent concurrent matching attempts on the same client
 let matchingInProgress = false;
@@ -32,14 +34,16 @@ export async function joinMatchingQueue(
   // Check if player is dropped
   const playerDoc = await getDoc(doc(db, 'tournaments', tournamentId, 'players', playerId));
   if (playerDoc.exists() && playerDoc.data().dropped) return;
+  const playerName = playerDoc.exists() ? playerDoc.data().displayName : null;
 
-  const queueRef = collection(db, 'tournaments', tournamentId, 'queue');
-  const existing = query(queueRef, where('playerId', '==', playerId));
-  const snap = await getDocs(existing);
-  if (!snap.empty) return;
+  const queueDocRef = doc(db, 'tournaments', tournamentId, 'queue', playerId);
+  const existing = await getDoc(queueDocRef);
+  if (existing.exists()) return;
 
-  await addDoc(queueRef, {
+  await setDoc(queueDocRef, {
     playerId,
+    playerName,
+    queuedByUid: auth.currentUser?.uid ?? null,
     joinedAt: Timestamp.now(),
     retainTable: retainTable ?? null,
   });
@@ -47,16 +51,11 @@ export async function joinMatchingQueue(
   // Player-side matching trigger: try matching immediately after joining queue
   try {
     await tryMatchAllPlayers(tournamentId);
-  } catch (_e) { /* ignore */ }
+  } catch { /* ignore */ }
 }
 
 export async function leaveMatchingQueue(tournamentId: string, playerId: string) {
-  const queueRef = collection(db, 'tournaments', tournamentId, 'queue');
-  const q = query(queueRef, where('playerId', '==', playerId));
-  const snap = await getDocs(q);
-  for (const d of snap.docs) {
-    await deleteDoc(d.ref);
-  }
+  await deleteDoc(doc(db, 'tournaments', tournamentId, 'queue', playerId));
 }
 
 // Get cooldown window based on player count
@@ -90,11 +89,10 @@ export async function tryMatchAllPlayers(tournamentId: string): Promise<Match[]>
   matchingInProgress = true;
 
   try {
-    const [tournDoc, queueSnap, matchesSnap, playersSnap] = await Promise.all([
+    const [tournDoc, counterSnap, queueSnap] = await Promise.all([
       getDoc(doc(db, 'tournaments', tournamentId)),
+      getDoc(doc(db, 'tournaments', tournamentId, 'meta', 'counters')),
       getDocs(query(collection(db, 'tournaments', tournamentId, 'queue'), orderBy('joinedAt', 'asc'))),
-      getDocs(collection(db, 'tournaments', tournamentId, 'matches')),
-      getDocs(collection(db, 'tournaments', tournamentId, 'players')),
     ]);
 
     if (!tournDoc.exists()) return [];
@@ -107,17 +105,29 @@ export async function tryMatchAllPlayers(tournamentId: string): Promise<Match[]>
     if (queueSnap.size < 2) return [];
 
     const now = Date.now();
-    const usedTables = new Set<number>();
-    const allMatches: Match[] = [];
+    const nowTs = Timestamp.fromMillis(now);
+    const matchesRef = collection(db, 'tournaments', tournamentId, 'matches');
+    const [ongoingSnap, bufferedSnap, recentSnap] = await Promise.all([
+      getDocs(query(matchesRef, where('status', '==', 'ongoing'))),
+      getDocs(query(matchesRef, where('status', '==', 'finished'), where('bufferUntil', '>', nowTs))),
+      getDocs(query(matchesRef, orderBy('startedAt', 'desc'), limit(200))),
+    ]);
 
-    for (const d of matchesSnap.docs) {
+    const usedTables = new Set<number>();
+    const recentMatchesById = new Map<string, Match>();
+
+    for (const d of ongoingSnap.docs) {
       const data = d.data();
-      allMatches.push({ id: d.id, ...data } as Match);
-      if (data.status === 'ongoing') {
-        usedTables.add(data.tableNumber);
-      } else if (data.status === 'finished' && data.bufferUntil && data.bufferUntil.toMillis() > now) {
-        usedTables.add(data.tableNumber);
-      }
+      usedTables.add(data.tableNumber);
+      recentMatchesById.set(d.id, { id: d.id, ...data } as Match);
+    }
+    for (const d of bufferedSnap.docs) {
+      const data = d.data();
+      usedTables.add(data.tableNumber);
+      recentMatchesById.set(d.id, { id: d.id, ...data } as Match);
+    }
+    for (const d of recentSnap.docs) {
+      recentMatchesById.set(d.id, { id: d.id, ...d.data() } as Match);
     }
 
     const availableTables: number[] = [];
@@ -126,26 +136,34 @@ export async function tryMatchAllPlayers(tournamentId: string): Promise<Match[]>
     }
     if (availableTables.length === 0) return [];
 
-    const playerCount = playersSnap.size;
+    const counterPlayerCount = counterSnap.exists() ? counterSnap.data().playerCount : undefined;
+    const playerCount = Math.max(
+      typeof counterPlayerCount === 'number' ? counterPlayerCount : 0,
+      tourn.playerCount ?? 0,
+      queueSnap.size,
+    );
     const cooldown = getCooldownWindow(playerCount);
 
-    const remainingEntries = [...queueSnap.docs];
+    const remainingEntries = queueSnap.docs.map((d) => ({
+      ref: d.ref,
+      data: d.data() as WaitingEntry,
+    }));
     const createdMatches: Match[] = [];
     let tableIdx = 0;
 
     const timerMinutes = tourn.isTest ? tourn.timerMinutes / 60 : tourn.timerMinutes;
     const bestOf: BestOf = tourn.bestOf ?? 1;
-    const batchMatches = [...allMatches];
+    const batchMatches = [...recentMatchesById.values()];
 
     while (remainingEntries.length >= 2 && tableIdx < availableTables.length) {
       let matched: [number, number] | null = null;
 
       // Try to find a valid pair with cooldown
       for (let i = 0; i < remainingEntries.length && !matched; i++) {
-        const p1 = remainingEntries[i].data().playerId;
+        const p1 = remainingEntries[i].data.playerId;
         const recentOpps = getRecentOpponents(p1, batchMatches, cooldown);
         for (let j = i + 1; j < remainingEntries.length; j++) {
-          const p2 = remainingEntries[j].data().playerId;
+          const p2 = remainingEntries[j].data.playerId;
           const recentOpps2 = getRecentOpponents(p2, batchMatches, cooldown);
           if (!recentOpps.has(p2) && !recentOpps2.has(p1)) {
             matched = [i, j];
@@ -160,12 +178,14 @@ export async function tryMatchAllPlayers(tournamentId: string): Promise<Match[]>
 
       const entry1 = remainingEntries[matched[0]];
       const entry2 = remainingEntries[matched[1]];
-      const p1 = entry1.data().playerId;
-      const p2 = entry2.data().playerId;
+      const p1 = entry1.data.playerId;
+      const p2 = entry2.data.playerId;
+      const p1Name = entry1.data.playerName ?? null;
+      const p2Name = entry2.data.playerName ?? null;
 
       // Determine table number: if either player retains a table, use that
-      const retain1 = entry1.data().retainTable;
-      const retain2 = entry2.data().retainTable;
+      const retain1 = entry1.data.retainTable;
+      const retain2 = entry2.data.retainTable;
       let tableNumber: number;
       if (retain1 && !usedTables.has(retain1)) {
         tableNumber = retain1;
@@ -180,6 +200,8 @@ export async function tryMatchAllPlayers(tournamentId: string): Promise<Match[]>
       const matchRef = await addDoc(collection(db, 'tournaments', tournamentId, 'matches'), {
         player1Id: p1,
         player2Id: p2,
+        player1Name: p1Name,
+        player2Name: p2Name,
         tableNumber,
         bestOf,
         games: [],
@@ -191,6 +213,7 @@ export async function tryMatchAllPlayers(tournamentId: string): Promise<Match[]>
         seatKeeperId: null,
         retainTable: null,
         timerSeconds: timerMinutes * 60,
+        createdByUid: auth.currentUser?.uid ?? null,
       });
 
       await Promise.all([
@@ -202,6 +225,8 @@ export async function tryMatchAllPlayers(tournamentId: string): Promise<Match[]>
         id: matchRef.id,
         player1Id: p1,
         player2Id: p2,
+        player1Name: p1Name ?? undefined,
+        player2Name: p2Name ?? undefined,
         tableNumber,
         bestOf,
         games: [],
@@ -504,9 +529,8 @@ export function subscribeToPlayerInQueue(
   playerId: string,
   callback: (inQueue: boolean) => void,
 ): Unsubscribe {
-  const queueRef = collection(db, 'tournaments', tournamentId, 'queue');
-  const q = query(queueRef, where('playerId', '==', playerId));
-  return onSnapshot(q, (snap) => {
-    callback(!snap.empty);
+  const queueRef = doc(db, 'tournaments', tournamentId, 'queue', playerId);
+  return onSnapshot(queueRef, (snap) => {
+    callback(snap.exists());
   });
 }

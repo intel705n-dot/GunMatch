@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { doc, getDoc, setDoc, Timestamp } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 import { db, auth } from '../../lib/firebase';
-import { useAuth } from '../../lib/AuthContext';
+import { useAuth } from '../../lib/useAuth';
 import type { HostProfile as HostProfileType } from '../../lib/types';
 import Layout from '../../components/Layout';
 

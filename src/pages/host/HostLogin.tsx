@@ -7,7 +7,7 @@ import {
   createUserWithEmailAndPassword,
 } from 'firebase/auth';
 import { auth } from '../../lib/firebase';
-import { useAuth } from '../../lib/AuthContext';
+import { useAuth } from '../../lib/useAuth';
 import Layout from '../../components/Layout';
 
 export default function HostLogin() {
@@ -33,8 +33,9 @@ export default function HostLogin() {
     try {
       await signInWithPopup(auth, new GoogleAuthProvider());
       navigate('/host', { replace: true });
-    } catch (e: any) {
-      if (e.code !== 'auth/popup-closed-by-user') {
+    } catch (e: unknown) {
+      const code = typeof e === 'object' && e && 'code' in e ? String(e.code) : '';
+      if (code !== 'auth/popup-closed-by-user') {
         setError('Googleログインに失敗しました');
       }
     }
@@ -51,7 +52,8 @@ export default function HostLogin() {
         await createUserWithEmailAndPassword(auth, email.trim(), password);
       }
       navigate('/host', { replace: true });
-    } catch (e: any) {
+    } catch (e: unknown) {
+      const code = typeof e === 'object' && e && 'code' in e ? String(e.code) : 'unknown';
       const messages: Record<string, string> = {
         'auth/invalid-email': 'メールアドレスの形式が正しくありません',
         'auth/user-not-found': 'アカウントが見つかりません',
@@ -60,7 +62,7 @@ export default function HostLogin() {
         'auth/email-already-in-use': 'このメールアドレスは既に登録されています',
         'auth/weak-password': 'パスワードは6文字以上にしてください',
       };
-      setError(messages[e.code] || `エラーが発生しました (${e.code})`);
+      setError(messages[code] || `エラーが発生しました (${code})`);
     } finally {
       setSubmitting(false);
     }

@@ -11,6 +11,7 @@ export default function SwipeToDelete({ children, onDelete, disabled }: SwipeToD
   const currentX = useRef(0);
   const [offsetX, setOffsetX] = useState(0);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const dragging = useRef(false);
 
   const threshold = -80;
@@ -20,6 +21,7 @@ export default function SwipeToDelete({ children, onDelete, disabled }: SwipeToD
     startX.current = e.touches[0].clientX;
     currentX.current = 0;
     dragging.current = true;
+    setIsDragging(true);
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
@@ -33,6 +35,7 @@ export default function SwipeToDelete({ children, onDelete, disabled }: SwipeToD
   const handleTouchEnd = () => {
     if (!dragging.current) return;
     dragging.current = false;
+    setIsDragging(false);
     if (currentX.current < threshold) {
       setShowConfirm(true);
       setOffsetX(threshold);
@@ -78,7 +81,7 @@ export default function SwipeToDelete({ children, onDelete, disabled }: SwipeToD
         onClick={() => { if (showConfirm) handleCancel(); }}
         style={{
           transform: `translateX(${offsetX}px)`,
-          transition: dragging.current ? 'none' : 'transform 0.2s ease-out',
+          transition: isDragging ? 'none' : 'transform 0.2s ease-out',
         }}
         className="relative z-10"
       >

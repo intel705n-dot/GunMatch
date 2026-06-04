@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  doc, collection, onSnapshot, addDoc, getDocs, query, where, Timestamp,
-  collectionGroup, updateDoc,
+  doc, collection, onSnapshot, getDocs, query, where,
 } from 'firebase/firestore';
 import { signInAnonymously, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { db, auth } from '../../lib/firebase';
-import { useAuth } from '../../lib/AuthContext';
+import { useAuth } from '../../lib/useAuth';
 import type { Tournament } from '../../lib/types';
+import { createTournamentPlayer } from '../../lib/playerService';
 import Layout from '../../components/Layout';
 import CardGameBadge from '../../components/CardGameBadge';
 
@@ -86,21 +86,17 @@ export default function PlayerEntry() {
       }
       const resolvedGoogleUid = googleUid || (auth.currentUser && !auth.currentUser.isAnonymous ? auth.currentUser.uid : null);
 
-      const playersSnap = await getDocs(collection(db, 'tournaments', tournamentId, 'players'));
-      const nextNumber = playersSnap.size + 1;
-
-      const playerRef = await addDoc(collection(db, 'tournaments', tournamentId, 'players'), {
-        entryNumber: nextNumber,
+      const playerRef = await createTournamentPlayer(tournamentId, {
         displayName: displayName.trim(),
         xId: xId.trim() || null,
         googleUid: resolvedGoogleUid,
+        authUid: auth.currentUser?.uid ?? null,
         wins: 0,
         losses: 0,
         currentStreak: 0,
         maxStreak: 0,
         isProxy: false,
         dropped: false,
-        createdAt: Timestamp.now(),
       });
 
       localStorage.setItem(`gunmatch_player_${tournamentId}`, playerRef.id);
@@ -177,8 +173,9 @@ export default function PlayerEntry() {
       } else {
         setError('このGoogleアカウントはこの大会に登録されていません');
       }
-    } catch (e: any) {
-      if (e.code !== 'auth/popup-closed-by-user') {
+    } catch (e: unknown) {
+      const code = typeof e === 'object' && e && 'code' in e ? String(e.code) : '';
+      if (code !== 'auth/popup-closed-by-user') {
         setError('Googleログインに失敗しました');
         console.error(e);
       }

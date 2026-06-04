@@ -20,6 +20,13 @@ service cloud.firestore {
       return value is string && value.size() > 0 && value.size() <= maxLen;
     }
 
+    function optionalOwnerUidIsValid(tournamentId) {
+      return !('authUid' in request.resource.data)
+        || request.resource.data.authUid == null
+        || request.resource.data.authUid == request.auth.uid
+        || isTournamentHost(tournamentId);
+    }
+
     // ============ Hosts (profile) ============
     match /hosts/{hostId} {
       allow read: if true;
@@ -58,6 +65,7 @@ service cloud.firestore {
         // Create: any auth user, but initial stats must be zero
         allow create: if isAuth()
                       && isValidName(request.resource.data.displayName, 50)
+                      && optionalOwnerUidIsValid(tournamentId)
                       && request.resource.data.wins == 0
                       && request.resource.data.losses == 0
                       && request.resource.data.currentStreak == 0
@@ -72,6 +80,7 @@ service cloud.firestore {
                           fieldUnchanged('entryNumber')
                           && fieldUnchanged('createdAt')
                           && fieldUnchanged('isProxy')
+                          && fieldUnchanged('authUid')
                         )
                       );
 
@@ -83,8 +92,15 @@ service cloud.firestore {
       match /matches/{matchId} {
         allow read: if true;
 
-        // Create: any auth user (matching service runs on client)
-        allow create: if isAuth();
+        // Create: client matching may create only from two queued players.
+        allow create: if isAuth()
+                      && request.resource.data.player1Id is string
+                      && request.resource.data.player2Id is string
+                      && request.resource.data.player1Id != request.resource.data.player2Id
+                      && request.resource.data.status == 'ongoing'
+                      && request.resource.data.winnerId == null
+                      && exists(/databases/$(database)/documents/tournaments/$(tournamentId)/queue/$(request.resource.data.player1Id))
+                      && exists(/databases/$(database)/documents/tournaments/$(tournamentId)/queue/$(request.resource.data.player2Id));
 
         // Update: host can update anything; non-hosts cannot change identity-defining fields
         // (player1Id/player2Id/tableNumber/bestOf/startedAt/timerSeconds are set at match creation
@@ -99,6 +115,7 @@ service cloud.firestore {
                           && fieldUnchanged('bestOf')
                           && fieldUnchanged('startedAt')
                           && fieldUnchanged('timerSeconds')
+                          && fieldUnchanged('createdByUid')
                         )
                       );
 
@@ -109,9 +126,27 @@ service cloud.firestore {
       // ============ Queue ============
       match /queue/{queueId} {
         allow read: if isAuth();
-        allow create: if isAuth();
+        allow create: if isAuth()
+                      && request.resource.data.playerId == queueId
+                      && (
+                        isTournamentHost(tournamentId)
+                        || request.resource.data.queuedByUid == request.auth.uid
+                      );
         allow update: if false;
-        allow delete: if isAuth();
+        allow delete: if isTournamentHost(tournamentId)
+                      || (isAuth() && resource.data.queuedByUid == request.auth.uid);
+      }
+
+      // ============ Meta / counters ============
+      match /meta/{metaId} {
+        allow read: if isAuth();
+        allow create, update: if isAuth()
+                              && metaId == 'counters'
+                              && request.resource.data.nextEntryNumber is int
+                              && request.resource.data.nextEntryNumber >= 1
+                              && request.resource.data.playerCount is int
+                              && request.resource.data.playerCount >= 0;
+        allow delete: if isTournamentHost(tournamentId);
       }
     }
   }

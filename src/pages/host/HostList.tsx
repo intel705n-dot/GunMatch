@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { collection, doc, getDoc, setDoc, deleteDoc, onSnapshot, query, orderBy, where, getDocs, collectionGroup } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
-import { Html5Qrcode } from 'html5-qrcode';
+import type { Html5Qrcode } from 'html5-qrcode';
 import { db } from '../../lib/firebase';
-import { useAuth } from '../../lib/AuthContext';
+import { useAuth } from '../../lib/useAuth';
 import type { Tournament } from '../../lib/types';
 import Layout from '../../components/Layout';
 import SwipeToDelete from '../../components/SwipeToDelete';
@@ -32,7 +32,7 @@ export default function HostList() {
   const handleDelete = async (tournamentId: string) => {
     setDeleting(tournamentId);
     try {
-      for (const sub of ['players', 'matches', 'queue']) {
+      for (const sub of ['players', 'matches', 'queue', 'meta']) {
         const snap = await getDocs(collection(db, 'tournaments', tournamentId, sub));
         for (const d of snap.docs) await deleteDoc(d.ref);
       }
@@ -126,26 +126,34 @@ export default function HostList() {
   // QR scanner lifecycle
   useEffect(() => {
     if (!showScanner) return;
-    const html5QrCode = new Html5Qrcode('qr-reader');
-    scannerRef.current = html5QrCode;
-    html5QrCode.start(
-      { facingMode: 'environment' },
-      { fps: 10, qrbox: { width: 250, height: 250 } },
-      (decodedText) => {
-        const match = decodedText.match(/\/entry\/([a-zA-Z0-9]+)/);
-        const tid = match ? match[1] : decodedText.trim();
-        html5QrCode.stop().catch(() => {});
-        scannerRef.current = null;
-        setShowScanner(false);
-        navigate(`/entry/${tid}`);
-      },
-      () => {},
-    ).catch((err) => {
+    let cancelled = false;
+    let html5QrCode: Html5Qrcode | null = null;
+
+    import('html5-qrcode').then(({ Html5Qrcode }) => {
+      if (cancelled) return;
+      html5QrCode = new Html5Qrcode('qr-reader');
+      scannerRef.current = html5QrCode;
+      return html5QrCode.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        (decodedText) => {
+          const match = decodedText.match(/\/entry\/([a-zA-Z0-9]+)/);
+          const tid = match ? match[1] : decodedText.trim();
+          html5QrCode?.stop().catch(() => {});
+          scannerRef.current = null;
+          setShowScanner(false);
+          navigate(`/entry/${tid}`);
+        },
+        () => {},
+      );
+    }).catch((err) => {
       setScanError('カメラを起動できませんでした');
       console.error(err);
     });
+
     return () => {
-      html5QrCode.stop().catch(() => {});
+      cancelled = true;
+      html5QrCode?.stop().catch(() => {});
       scannerRef.current = null;
     };
   }, [showScanner, navigate]);
