@@ -466,7 +466,7 @@ export default function PlayerMain() {
     match.player1Id === playerId ? match.player2Id : match.player1Id;
 
   if (!tournament || !player) {
-    return <Layout><p className="text-center py-16 text-slate-400">...</p></Layout>;
+    return <Layout><p className="text-center py-16 text-stone-500">...</p></Layout>;
   }
 
   const isFinished = tournament.status === 'finished';
@@ -484,7 +484,7 @@ export default function PlayerMain() {
               <CardGameBadge cardGameId={tournament.cardGame} cardGameOther={tournament.cardGameOther} />
             )}
             {tournament.hostName && (
-              <span className="text-xs text-slate-500">hosted by {tournament.hostName}</span>
+              <span className="text-xs text-stone-400">{tournament.hostName}</span>
             )}
           </div>
         </div>
@@ -492,10 +492,10 @@ export default function PlayerMain() {
           {auth.currentUser && !auth.currentUser.isAnonymous && (
             <button
               onClick={() => navigate('/host')}
-              className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors shrink-0"
+              className="p-2 bg-white shadow-sm hover:bg-stone-100 rounded-lg transition-colors shrink-0"
               title="マイページ"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-slate-400">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-stone-500">
                 <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" /><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
               </svg>
             </button>
@@ -505,66 +505,66 @@ export default function PlayerMain() {
               localStorage.removeItem(`gunmatch_player_${tournamentId}`);
               navigate(`/entry/${tournamentId}`, { replace: true });
             }}
-            className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors shrink-0"
+            className="p-2 bg-white shadow-sm hover:bg-stone-100 rounded-lg transition-colors shrink-0"
             title="退室"
           >
-            <LogOutIcon className="w-4 h-4 text-slate-400" />
+            <LogOutIcon className="w-4 h-4 text-stone-500" />
           </button>
         </div>
       </div>
 
       {/* Main Stats Card - Hero Section */}
-      <div className="relative bg-gradient-to-br from-slate-800 via-slate-800 to-slate-900 rounded-2xl border border-slate-700/80 mb-5 overflow-hidden">
+      <div className="relative bg-gradient-to-br from-white to-stone-50 rounded-2xl border border-stone-200 shadow-sm mb-5 overflow-hidden">
         {/* Background decoration */}
         <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute -top-12 -right-12 w-40 h-40 bg-indigo-600/10 rounded-full blur-2xl" />
-          <div className="absolute -bottom-8 -left-8 w-32 h-32 bg-emerald-600/10 rounded-full blur-2xl" />
+          <div className="absolute -top-12 -right-12 w-40 h-40 bg-orange-500/5 rounded-full blur-2xl" />
+          <div className="absolute -bottom-8 -left-8 w-32 h-32 bg-emerald-500/5 rounded-full blur-2xl" />
         </div>
 
         <div className="relative p-5">
           {/* Player name + badge */}
           <div className="flex items-center gap-2 mb-4">
-            <div className="w-8 h-8 rounded-full bg-indigo-600/30 border border-indigo-500/40 flex items-center justify-center">
-              <ShieldIcon className="w-4 h-4 text-indigo-400" />
+            <div className="w-8 h-8 rounded-full bg-orange-100 border border-orange-200 flex items-center justify-center">
+              <ShieldIcon className="w-4 h-4 text-orange-500" />
             </div>
             <div>
               <p className="font-bold text-base leading-tight">{player.displayName}</p>
               {tournament.description && (
-                <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">{tournament.description}</p>
+                <p className="text-xs text-stone-400 mt-0.5 line-clamp-1">{tournament.description}</p>
               )}
             </div>
           </div>
 
           {/* Win - Loss big display */}
           <div className="text-center py-3">
-            <p className="text-xs text-slate-400 uppercase tracking-widest mb-2 font-medium">Current Record</p>
+            <p className="text-xs text-stone-500 uppercase tracking-widest mb-2 font-medium">Current Record</p>
             <div className="flex items-center justify-center gap-3">
               <div className="text-right">
-                <p className="text-5xl font-black tabular-nums text-emerald-400 leading-none drop-shadow-[0_0_12px_rgba(52,211,153,0.3)]">
+                <p className="text-5xl font-black tabular-nums text-emerald-500 leading-none drop-shadow-[0_0_12px_rgba(16,185,129,0.2)]">
                   {player.wins}
                 </p>
-                <p className="text-xs text-emerald-400/70 font-bold mt-1.5 uppercase tracking-wider">Win</p>
+                <p className="text-xs text-emerald-500/70 font-bold mt-1.5 uppercase tracking-wider">Win</p>
               </div>
               <div className="flex flex-col items-center px-2">
-                <span className="text-3xl font-thin text-slate-600 leading-none">-</span>
+                <span className="text-3xl font-thin text-stone-300 leading-none">-</span>
               </div>
               <div className="text-left">
-                <p className="text-5xl font-black tabular-nums text-red-400 leading-none drop-shadow-[0_0_12px_rgba(248,113,113,0.3)]">
+                <p className="text-5xl font-black tabular-nums text-red-500 leading-none drop-shadow-[0_0_12px_rgba(239,68,68,0.2)]">
                   {player.losses}
                 </p>
-                <p className="text-xs text-red-400/70 font-bold mt-1.5 uppercase tracking-wider">Lose</p>
+                <p className="text-xs text-red-500/70 font-bold mt-1.5 uppercase tracking-wider">Lose</p>
               </div>
             </div>
           </div>
 
           {/* Sub stats bar */}
           {totalGames > 0 && (
-            <div className="flex items-center justify-center gap-6 mt-3 pt-3 border-t border-slate-700/60">
-              <div className="flex items-center gap-1.5 text-xs text-slate-400">
+            <div className="flex items-center justify-center gap-6 mt-3 pt-3 border-t border-stone-200">
+              <div className="flex items-center gap-1.5 text-xs text-stone-500">
                 <SwordsIcon className="w-3.5 h-3.5" />
                 <span>{totalGames} Games</span>
               </div>
-              <div className="flex items-center gap-1.5 text-xs text-slate-400">
+              <div className="flex items-center gap-1.5 text-xs text-stone-500">
                 <ChartIcon className="w-3.5 h-3.5" />
                 <span>{winRate}% Win Rate</span>
               </div>
@@ -573,8 +573,8 @@ export default function PlayerMain() {
 
           {/* Current streak */}
           {(player.currentStreak ?? 0) >= 2 && (
-            <div className="text-center mt-3 pt-3 border-t border-slate-700/60">
-              <p className="text-amber-400 font-black text-lg animate-pulse">
+            <div className="text-center mt-3 pt-3 border-t border-stone-200">
+              <p className="text-amber-500 font-black text-lg animate-pulse">
                 ★ {player.currentStreak}連勝中!
               </p>
             </div>
@@ -583,19 +583,19 @@ export default function PlayerMain() {
           {/* Max streak (show when tournament finished or no current streak) */}
           {isFinished && (player.maxStreak ?? 0) >= 2 && (
             <div className="text-center mt-2">
-              <p className="text-xs text-slate-400">
-                最大連勝: <span className="text-amber-400 font-bold">{player.maxStreak}</span>
+              <p className="text-xs text-stone-500">
+                最大連勝: <span className="text-amber-500 font-bold">{player.maxStreak}</span>
               </p>
             </div>
           )}
 
           {/* Google link / history */}
-          <div className="mt-3 pt-3 border-t border-slate-700/60 flex items-center justify-center gap-3">
+          <div className="mt-3 pt-3 border-t border-stone-200 flex items-center justify-center gap-3">
             {!player.googleUid ? (
               <button
                 onClick={handleLinkGoogle}
                 disabled={linkingGoogle}
-                className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors disabled:opacity-50"
+                className="flex items-center gap-1.5 text-xs text-stone-500 hover:text-stone-900 transition-colors disabled:opacity-50"
               >
                 <svg viewBox="0 0 24 24" className="w-3.5 h-3.5">
                   <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
@@ -609,7 +609,7 @@ export default function PlayerMain() {
               <button
                 onClick={loadPastRecords}
                 disabled={loadingHistory}
-                className="flex items-center gap-1.5 text-xs text-emerald-400/80 hover:text-emerald-300 transition-colors disabled:opacity-50"
+                className="flex items-center gap-1.5 text-xs text-emerald-500/80 hover:text-emerald-400 transition-colors disabled:opacity-50"
               >
                 <ChartIcon className="w-3.5 h-3.5" />
                 {loadingHistory ? '読み込み中...' : '過去の大会戦績'}
@@ -621,10 +621,10 @@ export default function PlayerMain() {
 
       {/* Dropped banner */}
       {player.dropped && !isFinished && (
-        <div className="mb-5 p-4 bg-red-900/30 border border-red-700/50 rounded-2xl text-center">
-          <XCircleIcon className="w-8 h-8 text-red-400 mx-auto mb-2" />
-          <p className="text-lg font-bold text-red-300">ドロップ済み</p>
-          <p className="text-sm text-red-400/70 mt-1">大会から棄権しました。復帰するにはホストに依頼してください。</p>
+        <div className="mb-5 p-4 bg-red-50 border border-red-200 rounded-2xl shadow-sm text-center">
+          <XCircleIcon className="w-8 h-8 text-red-500 mx-auto mb-2" />
+          <p className="text-lg font-bold text-red-500">ドロップ済み</p>
+          <p className="text-sm text-red-500/70 mt-1">大会から棄権しました。復帰するにはホストに依頼してください。</p>
         </div>
       )}
 
@@ -633,25 +633,25 @@ export default function PlayerMain() {
         <div className="mb-5">
           {postMatchInfo.isStayer && !seatDecided ? (
             // Stayer gets to choose: stay or leave
-            <div className="bg-gradient-to-b from-amber-900/40 to-amber-950/20 border border-amber-500/40 rounded-2xl p-5 text-center">
-              <CheckCircleIcon className="w-8 h-8 text-amber-400 mx-auto mb-2" />
+            <div className="bg-gradient-to-b from-amber-50 to-amber-50/50 border border-amber-300 rounded-2xl shadow-sm p-5 text-center">
+              <CheckCircleIcon className="w-8 h-8 text-amber-500 mx-auto mb-2" />
               <p className="text-lg font-bold mb-1">
                 {postMatchInfo.winnerId === playerId ? '勝利！' : '対戦終了'}
               </p>
-              <p className="text-sm text-slate-300 mb-4">
+              <p className="text-sm text-stone-600 mb-4">
                 この卓で次の対戦を待ちますか？
               </p>
 
               {/* Countdown for loser-stays */}
               {seatCountdown > 0 && (
                 <div className="mb-4">
-                  <div className="w-full bg-slate-700 rounded-full h-2 mb-1.5">
+                  <div className="w-full bg-stone-200 rounded-full h-2 mb-1.5">
                     <div
                       className="bg-amber-500 h-2 rounded-full transition-all duration-1000"
                       style={{ width: `${(seatCountdown / 25) * 100}%` }}
                     />
                   </div>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-stone-500">
                     残り{seatCountdown}秒 — 何もしなければ自動で続行します
                   </p>
                 </div>
@@ -660,13 +660,13 @@ export default function PlayerMain() {
               <div className="grid grid-cols-2 gap-3">
                 <button
                   onClick={() => handleSeatChoice(true)}
-                  className="py-3 bg-amber-600 hover:bg-amber-500 rounded-xl font-bold transition-colors text-sm"
+                  className="py-3 bg-amber-500 hover:bg-amber-400 rounded-xl font-bold transition-colors text-sm"
                 >
                   続ける
                 </button>
                 <button
                   onClick={() => handleSeatChoice(false)}
-                  className="py-3 bg-slate-700 hover:bg-slate-600 rounded-xl font-bold transition-colors text-sm"
+                  className="py-3 bg-stone-200 hover:bg-stone-200 rounded-xl font-bold transition-colors text-sm"
                 >
                   離席する
                 </button>
@@ -674,31 +674,31 @@ export default function PlayerMain() {
             </div>
           ) : seatDecided && !postMatchInfo.isStayer ? (
             // Non-stayer: forced to leave
-            <div className="bg-slate-800 border border-slate-700 rounded-2xl p-5 text-center">
-              <p className="text-sm text-slate-300 mb-3">
+            <div className="bg-white border border-stone-200 rounded-2xl shadow-sm p-5 text-center">
+              <p className="text-sm text-stone-600 mb-3">
                 {postMatchInfo.winnerId === playerId ? '勝利！' : '対戦結果が登録されました'}
               </p>
               <button
                 onClick={() => { setPostMatchInfo(null); }}
-                className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-bold transition-colors text-sm"
+                className="w-full py-3 bg-orange-500 hover:bg-orange-400 rounded-xl font-bold transition-colors text-sm"
               >
                 マッチングに戻る
               </button>
             </div>
           ) : seatDecided && postMatchInfo.isStayer ? (
             // Stayer decided to stay - waiting for next opponent
-            <div className="bg-gradient-to-b from-amber-900/30 to-slate-800 border border-amber-500/30 rounded-2xl p-5 text-center">
+            <div className="bg-gradient-to-b from-amber-50 to-white border border-amber-200 rounded-2xl shadow-sm p-5 text-center">
               <div className="mb-3">
                 <div className="relative w-16 h-16 mx-auto">
-                  <div className="absolute inset-0 rounded-full bg-amber-600/20 animate-ping" />
-                  <div className="absolute inset-2 rounded-full bg-amber-600/30 animate-pulse" />
+                  <div className="absolute inset-0 rounded-full bg-amber-100 animate-ping" />
+                  <div className="absolute inset-2 rounded-full bg-amber-200 animate-pulse" />
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <SearchIcon className="w-7 h-7 text-amber-400" />
+                    <SearchIcon className="w-7 h-7 text-amber-500" />
                   </div>
                 </div>
               </div>
-              <p className="text-lg font-bold text-amber-300">卓キープ中</p>
-              <p className="text-sm text-slate-400 mt-1">Table {postMatchInfo.tableNumber} で次の相手を待っています...</p>
+              <p className="text-lg font-bold text-amber-600">卓キープ中</p>
+              <p className="text-sm text-stone-500 mt-1">Table {postMatchInfo.tableNumber} で次の相手を待っています...</p>
               <button
                 onClick={async () => {
                   if (tournamentId && playerId) {
@@ -706,7 +706,7 @@ export default function PlayerMain() {
                   }
                   setPostMatchInfo(null);
                 }}
-                className="mt-4 w-full py-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-sm font-bold transition-colors text-slate-300"
+                className="mt-4 w-full py-2 bg-stone-200 hover:bg-stone-200 rounded-xl text-sm font-bold transition-colors text-stone-600"
               >
                 離席する
               </button>
@@ -731,16 +731,16 @@ export default function PlayerMain() {
 
             return (
             /* In battle */
-            <div className="bg-gradient-to-b from-indigo-900/50 to-indigo-950/30 border border-indigo-500/40 rounded-2xl p-5">
+            <div className="bg-gradient-to-b from-orange-50 to-orange-50/50 border border-orange-300 rounded-2xl shadow-sm p-5">
               {/* Header: Table + BO info */}
               <div className="flex items-center justify-center gap-2 mb-4">
-                <SwordsIcon className="w-4 h-4 text-indigo-400" />
-                <span className="text-xs font-bold bg-indigo-600/80 px-3 py-1 rounded-full uppercase tracking-wider">
+                <SwordsIcon className="w-4 h-4 text-orange-500" />
+                <span className="text-xs font-bold bg-orange-500 px-3 py-1 rounded-full uppercase tracking-wider text-white">
                   Table {currentMatch.tableNumber}
                   {isBo && ` – BO${bestOf}`}
                 </span>
                 {isBo && (
-                  <span className="text-xs font-bold bg-slate-700 px-2 py-0.5 rounded-full text-slate-300">
+                  <span className="text-xs font-bold bg-stone-200 px-2 py-0.5 rounded-full text-stone-600">
                     Game {gameNum}
                   </span>
                 )}
@@ -752,17 +752,17 @@ export default function PlayerMain() {
                   <div className="flex items-center justify-center gap-4 mb-2">
                     <div className="text-center">
                       <p className="text-sm font-bold">{player.displayName}</p>
-                      <p className="text-3xl font-black tabular-nums text-emerald-400">{myWins}</p>
+                      <p className="text-3xl font-black tabular-nums text-emerald-500">{myWins}</p>
                     </div>
-                    <span className="text-2xl font-thin text-slate-600">-</span>
+                    <span className="text-2xl font-thin text-stone-300">-</span>
                     <div className="text-center">
                       <p className="text-sm font-bold">{opponentName}</p>
-                      <p className="text-3xl font-black tabular-nums text-red-400">{oppWins}</p>
+                      <p className="text-3xl font-black tabular-nums text-red-500">{oppWins}</p>
                     </div>
                   </div>
                 ) : (
                   <>
-                    <p className="text-xs text-slate-400 mb-1">VS</p>
+                    <p className="text-xs text-stone-500 mb-1">VS</p>
                     <p className="text-xl font-bold">{opponentName}</p>
                   </>
                 )}
@@ -771,36 +771,36 @@ export default function PlayerMain() {
               {/* Timer */}
               <div className="text-center mb-3">
                 {correctionMode ? (
-                  <p className="text-lg font-bold text-amber-400">タイマー停止中</p>
+                  <p className="text-lg font-bold text-amber-500">タイマー停止中</p>
                 ) : (
                   <Timer endTime={currentMatch.startedAt.toMillis() + timerSeconds * 1000} />
                 )}
-                <p className="text-xs text-slate-500 mt-1">
+                <p className="text-xs text-stone-400 mt-1">
                   {correctionMode ? '修正が完了するとタイマーが再開します' : '※ 対戦準備時間を含めた時間です'}
                 </p>
               </div>
 
               {/* Correction mode */}
               {correctionMode ? (
-                <div className="mt-5 pt-4 border-t border-amber-500/30">
+                <div className="mt-5 pt-4 border-t border-amber-200">
                   <div className="flex items-center justify-center gap-2 mb-3">
-                    <span className="text-amber-400 font-bold text-sm">修正中</span>
+                    <span className="text-amber-500 font-bold text-sm">修正中</span>
                   </div>
                   <div className="space-y-2 mb-4">
                     {games.map((g, i) => {
                       const isMyWin = g.winnerId === playerId;
                       return (
-                        <div key={i} className="flex items-center justify-between bg-slate-800/80 rounded-xl p-3 border border-slate-700">
+                        <div key={i} className="flex items-center justify-between bg-white rounded-xl p-3 border border-stone-200 shadow-sm">
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-slate-500 font-bold">Game {i + 1}</span>
-                            <TrophyIcon className="w-4 h-4 text-amber-400" />
+                            <span className="text-xs text-stone-400 font-bold">Game {i + 1}</span>
+                            <TrophyIcon className="w-4 h-4 text-amber-500" />
                             <span className="text-sm font-bold">
                               {isMyWin ? player.displayName : opponentName}
                             </span>
                           </div>
                           <button
                             onClick={() => handleCorrectGame(i)}
-                            className="px-3 py-1 bg-amber-700 hover:bg-amber-600 rounded-lg text-xs font-bold transition-colors"
+                            className="px-3 py-1 bg-amber-500 hover:bg-amber-400 rounded-lg text-xs font-bold transition-colors"
                           >
                             変更
                           </button>
@@ -810,16 +810,16 @@ export default function PlayerMain() {
                   </div>
                   <button
                     onClick={() => setCorrectionMode(false)}
-                    className="w-full py-3 bg-slate-700 hover:bg-slate-600 rounded-xl font-bold text-sm transition-colors"
+                    className="w-full py-3 bg-stone-200 hover:bg-stone-200 rounded-xl font-bold text-sm transition-colors"
                   >
                     修正完了
                   </button>
                 </div>
               ) : (
                 /* Normal game reporting */
-                <div className="mt-5 pt-4 border-t border-indigo-500/20">
-                  <p className="text-center text-sm text-slate-300 mb-3 font-bold flex items-center justify-center gap-1.5">
-                    <TrophyIcon className="w-4 h-4 text-amber-400" />
+                <div className="mt-5 pt-4 border-t border-orange-200">
+                  <p className="text-center text-sm text-stone-600 mb-3 font-bold flex items-center justify-center gap-1.5">
+                    <TrophyIcon className="w-4 h-4 text-amber-500" />
                     {isBo ? `Game ${gameNum} の勝者を選択` : '勝者を選択'}
                   </p>
 
@@ -827,41 +827,41 @@ export default function PlayerMain() {
                     <div className="space-y-2.5">
                       <button
                         onClick={() => setSelectedGameWinner(playerId!)}
-                        className="w-full py-4 bg-slate-800/80 hover:bg-emerald-900/60 rounded-xl font-bold text-base transition-all border border-slate-700 hover:border-emerald-500/60 group"
+                        className="w-full py-4 bg-white hover:bg-emerald-50 rounded-xl font-bold text-base transition-all border border-stone-200 hover:border-emerald-300 shadow-sm group"
                       >
                         <span className="flex items-center justify-center gap-2">
-                          <TrophyIcon className="w-5 h-5 text-slate-500 group-hover:text-amber-400 transition-colors" />
+                          <TrophyIcon className="w-5 h-5 text-stone-400 group-hover:text-amber-500 transition-colors" />
                           {player.displayName}
                         </span>
-                        <span className="block text-xs text-slate-500 font-normal mt-0.5">自分</span>
+                        <span className="block text-xs text-stone-400 font-normal mt-0.5">自分</span>
                       </button>
                       <button
                         onClick={() => setSelectedGameWinner(opponentId)}
-                        className="w-full py-4 bg-slate-800/80 hover:bg-emerald-900/60 rounded-xl font-bold text-base transition-all border border-slate-700 hover:border-emerald-500/60 group"
+                        className="w-full py-4 bg-white hover:bg-emerald-50 rounded-xl font-bold text-base transition-all border border-stone-200 hover:border-emerald-300 shadow-sm group"
                       >
                         <span className="flex items-center justify-center gap-2">
-                          <TrophyIcon className="w-5 h-5 text-slate-500 group-hover:text-amber-400 transition-colors" />
+                          <TrophyIcon className="w-5 h-5 text-stone-400 group-hover:text-amber-500 transition-colors" />
                           {opponentName}
                         </span>
-                        <span className="block text-xs text-slate-500 font-normal mt-0.5">対戦相手</span>
+                        <span className="block text-xs text-stone-400 font-normal mt-0.5">対戦相手</span>
                       </button>
                     </div>
                   ) : (
-                    <div className="bg-slate-800/80 rounded-xl p-4 border border-slate-600/50">
+                    <div className="bg-white rounded-xl p-4 border border-stone-200 shadow-sm">
                       <div className="flex items-center justify-center gap-2 mb-1">
-                        <TrophyIcon className="w-5 h-5 text-amber-400" />
+                        <TrophyIcon className="w-5 h-5 text-amber-500" />
                         <p className="text-lg font-bold">
                           {selectedGameWinner === playerId ? player.displayName : opponentName}
                         </p>
                       </div>
-                      <p className="text-center text-sm text-emerald-400 mb-4">
+                      <p className="text-center text-sm text-emerald-500 mb-4">
                         {isBo ? `Game ${gameNum} の勝利でよろしいですか？` : 'の勝利でよろしいですか？'}
                       </p>
                       <div className="grid grid-cols-2 gap-3">
                         <button
                           onClick={() => setSelectedGameWinner(null)}
                           disabled={reporting}
-                          className="py-3 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 rounded-xl font-bold transition-colors text-sm"
+                          className="py-3 bg-stone-200 hover:bg-stone-200 disabled:opacity-50 rounded-xl font-bold transition-colors text-sm"
                         >
                           戻る
                         </button>
@@ -881,7 +881,7 @@ export default function PlayerMain() {
                   {isBo && games.length > 0 && !selectedGameWinner && (
                     <button
                       onClick={() => setCorrectionMode(true)}
-                      className="w-full mt-3 py-2 text-xs text-slate-500 hover:text-amber-400 transition-colors"
+                      className="w-full mt-3 py-2 text-xs text-stone-400 hover:text-amber-500 transition-colors"
                     >
                       結果を修正する
                     </button>
@@ -893,22 +893,22 @@ export default function PlayerMain() {
           })() : inQueue ? (
             /* Waiting in queue */
             <div className="text-center">
-              <div className="bg-slate-800 rounded-2xl p-8 border border-slate-700 mb-3">
+              <div className="bg-white rounded-2xl p-8 border border-stone-200 shadow-sm mb-3">
                 <div className="mb-4">
                   <div className="relative w-20 h-20 mx-auto">
-                    <div className="absolute inset-0 rounded-full bg-indigo-600/20 animate-ping" />
-                    <div className="absolute inset-2 rounded-full bg-indigo-600/30 animate-pulse" />
+                    <div className="absolute inset-0 rounded-full bg-orange-500/20 animate-ping" />
+                    <div className="absolute inset-2 rounded-full bg-orange-500/30 animate-pulse" />
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <SearchIcon className="w-8 h-8 text-indigo-400" />
+                      <SearchIcon className="w-8 h-8 text-orange-500" />
                     </div>
                   </div>
                 </div>
                 <p className="text-lg font-bold">マッチング中</p>
-                <p className="text-sm text-slate-400 mt-1">対戦相手を探しています...</p>
+                <p className="text-sm text-stone-500 mt-1">対戦相手を探しています...</p>
               </div>
               <button
                 onClick={handleCancelMatching}
-                className="w-full py-3 bg-slate-800 hover:bg-slate-700 rounded-xl font-bold transition-colors border border-slate-700 flex items-center justify-center gap-2 text-slate-300"
+                className="w-full py-3 bg-white hover:bg-stone-100 rounded-xl font-bold transition-colors border border-stone-200 shadow-sm flex items-center justify-center gap-2 text-stone-600"
               >
                 <XCircleIcon className="w-4 h-4" />
                 キャンセル
@@ -916,16 +916,16 @@ export default function PlayerMain() {
             </div>
           ) : tournament.matchingDeadline && tournament.matchingDeadline.toMillis() < Date.now() ? (
             /* Deadline passed */
-            <div className="text-center py-6 bg-slate-800 rounded-2xl border border-slate-700">
-              <ClockIcon className="w-8 h-8 text-slate-500 mx-auto mb-2" />
-              <p className="text-lg font-bold text-slate-400">マッチング受付終了</p>
-              <p className="text-sm text-slate-500 mt-1">最終マッチング時間を過ぎました</p>
+            <div className="text-center py-6 bg-white rounded-2xl border border-stone-200 shadow-sm">
+              <ClockIcon className="w-8 h-8 text-stone-400 mx-auto mb-2" />
+              <p className="text-lg font-bold text-stone-500">マッチング受付終了</p>
+              <p className="text-sm text-stone-400 mt-1">最終マッチング時間を過ぎました</p>
             </div>
           ) : (
             /* Ready to match */
             <button
               onClick={handleStartMatching}
-              className="w-full py-5 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 rounded-2xl font-bold text-xl transition-all shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 active:scale-[0.98]"
+              className="w-full py-5 bg-gradient-to-r from-orange-500 to-orange-400 hover:from-orange-400 hover:to-orange-300 rounded-2xl font-bold text-xl transition-all shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2 active:scale-[0.98]"
             >
               <SwordsIcon className="w-6 h-6" />
               マッチング開始
@@ -937,11 +937,11 @@ export default function PlayerMain() {
       {/* Ranking tab (after tournament ends) */}
       {isFinished && (
         <div className="mb-6">
-          <div className="flex mb-4 bg-slate-800 rounded-xl p-1">
+          <div className="flex mb-4 bg-stone-100 rounded-xl p-1 shadow-sm">
             <button
               onClick={() => setShowRanking(false)}
               className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-1.5 ${
-                !showRanking ? 'bg-indigo-600 text-white' : 'text-slate-400'
+                !showRanking ? 'bg-orange-500 text-white' : 'text-stone-500'
               }`}
             >
               <SwordsIcon className="w-4 h-4" />
@@ -950,7 +950,7 @@ export default function PlayerMain() {
             <button
               onClick={() => setShowRanking(true)}
               className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-1.5 ${
-                showRanking ? 'bg-indigo-600 text-white' : 'text-slate-400'
+                showRanking ? 'bg-orange-500 text-white' : 'text-stone-500'
               }`}
             >
               <ChartIcon className="w-4 h-4" />
@@ -972,7 +972,7 @@ export default function PlayerMain() {
       {/* Match history */}
       {(!isFinished || !showRanking) && matchHistory.length > 0 && (
         <div>
-          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+          <h3 className="text-xs font-bold text-stone-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
             <ClockIcon className="w-3.5 h-3.5" />
             Match History
           </h3>
@@ -982,32 +982,32 @@ export default function PlayerMain() {
               const isWin = m.winnerId === playerId;
               const isOngoing = m.status === 'ongoing';
               return (
-                <div key={m.id} className="bg-slate-800/80 rounded-xl p-3.5 border border-slate-700/60 flex items-center justify-between">
+                <div key={m.id} className="bg-white rounded-xl p-3.5 border border-stone-200 shadow-sm flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-                      isOngoing ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30' :
-                      isWin ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30' :
-                      'bg-red-600/20 text-red-400 border border-red-500/30'
+                      isOngoing ? 'bg-blue-50 text-blue-500 border border-blue-200' :
+                      isWin ? 'bg-emerald-50 text-emerald-500 border border-emerald-200' :
+                      'bg-red-50 text-red-500 border border-red-200'
                     }`}>
                       {matchHistory.length - i}
                     </div>
                     <div>
                       <p className="text-sm font-bold">{getPlayerName(opponentId)}</p>
-                      <p className="text-xs text-slate-500">
+                      <p className="text-xs text-stone-400">
                         Table {m.tableNumber}
                       </p>
                     </div>
                   </div>
                   {isOngoing ? (
-                    <span className="text-xs font-bold bg-blue-600/20 text-blue-400 px-3 py-1 rounded-full border border-blue-500/30 flex items-center gap-1">
+                    <span className="text-xs font-bold bg-blue-50 text-blue-500 px-3 py-1 rounded-full border border-blue-200 flex items-center gap-1">
                       <SwordsIcon className="w-3 h-3" />
                       LIVE
                     </span>
                   ) : (
                     <span className={`text-xs font-bold px-3 py-1 rounded-full ${
                       isWin
-                        ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
-                        : 'bg-red-600/20 text-red-400 border border-red-500/30'
+                        ? 'bg-emerald-50 text-emerald-500 border border-emerald-200'
+                        : 'bg-red-50 text-red-500 border border-red-200'
                     }`}>
                       {isWin ? 'WIN' : 'LOSE'}
                     </span>
@@ -1023,28 +1023,28 @@ export default function PlayerMain() {
       {showHistory && pastRecords.length > 0 && (
         <div className="mt-6">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+            <h3 className="text-xs font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1.5">
               <ChartIcon className="w-3.5 h-3.5" />
               Past Tournaments
             </h3>
             <button
               onClick={() => setShowHistory(false)}
-              className="text-xs text-slate-500 hover:text-slate-300"
+              className="text-xs text-stone-400 hover:text-stone-600"
             >
               閉じる
             </button>
           </div>
           <div className="space-y-2">
             {pastRecords.map((r, i) => (
-              <div key={i} className="bg-slate-800/80 rounded-xl p-3.5 border border-slate-700/60 flex items-center justify-between">
+              <div key={i} className="bg-white rounded-xl p-3.5 border border-stone-200 shadow-sm flex items-center justify-between">
                 <div>
                   <p className="text-sm font-bold">{r.tournamentName}</p>
-                  <p className="text-xs text-slate-500">{r.date}</p>
+                  <p className="text-xs text-stone-400">{r.date}</p>
                 </div>
                 <div className="flex items-center gap-1 text-sm font-bold">
-                  <span className="text-emerald-400">{r.wins}</span>
-                  <span className="text-slate-600">-</span>
-                  <span className="text-red-400">{r.losses}</span>
+                  <span className="text-emerald-500">{r.wins}</span>
+                  <span className="text-stone-300">-</span>
+                  <span className="text-red-500">{r.losses}</span>
                 </div>
               </div>
             ))}
@@ -1052,18 +1052,18 @@ export default function PlayerMain() {
         </div>
       )}
       {showHistory && pastRecords.length === 0 && !loadingHistory && (
-        <div className="mt-6 text-center py-4 bg-slate-800 rounded-xl border border-slate-700">
-          <p className="text-sm text-slate-400">過去の大会戦績はありません</p>
+        <div className="mt-6 text-center py-4 bg-white rounded-xl border border-stone-200 shadow-sm">
+          <p className="text-sm text-stone-500">過去の大会戦績はありません</p>
         </div>
       )}
 
       {/* Drop button */}
       {!isFinished && !player.dropped && !currentMatch && (
-        <div className="mt-8 pt-4 border-t border-slate-800">
+        <div className="mt-8 pt-4 border-t border-stone-200">
           <button
             onClick={handleDrop}
             disabled={dropping}
-            className="w-full py-3 text-sm font-bold text-red-400/60 hover:text-red-400 hover:bg-red-900/20 rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+            className="w-full py-3 text-sm font-bold text-red-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
           >
             <XCircleIcon className="w-4 h-4" />
             {dropping ? 'ドロップ中...' : 'ドロップ（棄権）する'}

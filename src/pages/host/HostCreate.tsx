@@ -229,7 +229,7 @@ export default function HostCreate() {
     return (
       <Layout>
         <h1 className="text-2xl font-bold mb-6">大会作成完了</h1>
-        <div className="bg-slate-800 rounded-xl p-6 mb-6 border border-slate-700">
+        <div className="bg-white rounded-2xl p-6 mb-6 border border-stone-200 shadow-sm">
           <div className="flex items-center gap-2 mb-4">
             <h2 className="text-xl font-bold">{name}</h2>
             {cardGame && <CardGameBadge cardGameId={cardGame} cardGameOther={cardGameOther} />}
@@ -238,48 +238,48 @@ export default function HostCreate() {
         </div>
 
         {showPostSaveSuggestion && !postSaved && (
-          <div className="bg-slate-800 rounded-xl p-4 mb-6 border border-slate-700">
-            <p className="text-sm text-slate-300 mb-3">この設定をプリセットとして保存しますか？</p>
+          <div className="bg-white rounded-2xl p-4 mb-6 border border-stone-200 shadow-sm">
+            <p className="text-sm text-stone-600 mb-3">この設定をプリセットとして保存しますか？</p>
             <div className="flex gap-2">
               <input
                 value={postPresetName}
                 onChange={(e) => setPostPresetName(e.target.value)}
                 placeholder="プリセット名"
-                className="flex-1 px-3 py-2 bg-slate-700 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="flex-1 px-3 py-2 bg-stone-100 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-orange-400"
               />
               <button
                 onClick={savePostPreset}
                 disabled={!postPresetName.trim() || postSaving}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-500 rounded-lg text-sm font-bold transition-colors"
+                className="px-4 py-2 bg-orange-500 hover:bg-orange-600 disabled:bg-stone-200 disabled:text-stone-400 rounded-lg text-sm font-bold transition-colors text-white"
               >
                 {postSaving ? '...' : '保存'}
               </button>
               <button
                 onClick={() => setShowPostSaveSuggestion(false)}
-                className="px-3 py-2 text-slate-500 hover:text-slate-300 text-sm"
+                className="px-3 py-2 text-stone-400 hover:text-stone-600 text-sm"
               >
                 不要
               </button>
             </div>
-            <p className="text-xs text-slate-500 mt-2">次回の大会作成時にワンタップで呼び出せます（{presets.length}/{MAX_PRESETS}件）</p>
+            <p className="text-xs text-stone-400 mt-2">次回の大会作成時にワンタップで呼び出せます（{presets.length}/{MAX_PRESETS}件）</p>
           </div>
         )}
         {postSaved && (
-          <div className="bg-emerald-900/30 border border-emerald-700/50 rounded-xl p-4 mb-6 text-center">
-            <p className="text-sm text-emerald-300 font-bold">プリセットを保存しました</p>
+          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 mb-6 text-center">
+            <p className="text-sm text-emerald-600 font-bold">プリセットを保存しました</p>
           </div>
         )}
 
         <div className="flex gap-3">
           <button
             onClick={() => navigate(`/host/${createdId}`)}
-            className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-bold transition-colors"
+            className="flex-1 py-3 bg-orange-500 hover:bg-orange-600 rounded-xl font-bold transition-colors text-white"
           >
             管理画面へ
           </button>
           <button
             onClick={() => navigate('/host')}
-            className="flex-1 py-3 bg-slate-700 hover:bg-slate-600 rounded-xl font-bold transition-colors"
+            className="flex-1 py-3 bg-stone-100 hover:bg-stone-200 rounded-xl font-bold transition-colors border border-stone-200"
           >
             一覧に戻る
           </button>
@@ -294,20 +294,20 @@ export default function HostCreate() {
   return (
     <Layout>
       <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => navigate('/host')} className="text-slate-400 hover:text-white text-2xl">{'←'}</button>
+        <button onClick={() => navigate('/host')} className="text-stone-400 hover:text-stone-700 text-2xl">{'←'}</button>
         <h1 className="text-2xl font-bold">新規大会作成</h1>
       </div>
 
       <div className="space-y-4">
         {/* ── Preset loader ── */}
         {presets.length > 0 && (
-          <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
-            <label className="block text-sm text-slate-400 mb-2">プリセットから読み込み</label>
+          <div className="bg-stone-50 rounded-xl p-4 border border-stone-200">
+            <label className="block text-sm text-stone-500 mb-2">プリセットから読み込み</label>
             <div className="flex gap-2">
               <select
                 value={selectedPreset}
                 onChange={(e) => applyPreset(e.target.value)}
-                className="flex-1 px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-sm focus:outline-none focus:border-indigo-500"
+                className="flex-1 px-3 py-2 bg-white border border-stone-200 rounded-lg text-sm focus:outline-none focus:border-orange-400"
               >
                 <option value="">-- 選択してください --</option>
                 <option value="__default__">デフォルト設定に戻す</option>
@@ -318,7 +318,7 @@ export default function HostCreate() {
               {selectedPreset && selectedPreset !== '__default__' && (
                 <button
                   onClick={() => deletePreset(selectedPreset)}
-                  className="px-3 py-2 bg-slate-700 hover:bg-red-900/50 text-slate-400 hover:text-red-400 rounded-lg text-sm transition-colors"
+                  className="px-3 py-2 bg-white hover:bg-red-50 text-stone-400 hover:text-red-500 rounded-lg text-sm transition-colors border border-stone-200"
                   title="プリセット削除"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
@@ -332,22 +332,22 @@ export default function HostCreate() {
 
         {/* ── 大会名 ── */}
         <div>
-          <label className="block text-sm text-slate-400 mb-1">大会名 *</label>
+          <label className="block text-sm text-stone-500 mb-1">大会名 *</label>
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl focus:outline-none focus:border-indigo-500"
+            className="w-full px-4 py-3 bg-stone-100 border border-stone-200 rounded-xl focus:outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-400"
             placeholder="例：第1回ガンスリンガー大会"
           />
         </div>
 
         {/* ── カードゲーム種別 ── */}
         <div>
-          <label className="block text-sm text-slate-400 mb-1">カードゲーム *</label>
+          <label className="block text-sm text-stone-500 mb-1">カードゲーム *</label>
           <select
             value={cardGame}
             onChange={(e) => setCardGame(e.target.value)}
-            className="w-full px-4 py-3 bg-slate-800 border rounded-xl focus:outline-none focus:border-indigo-500"
+            className="w-full px-4 py-3 bg-stone-100 border rounded-xl focus:outline-none focus:border-orange-400"
             style={{ borderColor: selectedGame ? selectedGame.colors.border : undefined }}
           >
             <option value="" disabled>カードゲームを選択してください</option>
@@ -368,7 +368,7 @@ export default function HostCreate() {
             <input
               value={cardGameOther}
               onChange={(e) => setCardGameOther(e.target.value)}
-              className="w-full mt-2 px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl focus:outline-none focus:border-indigo-500"
+              className="w-full mt-2 px-4 py-3 bg-stone-100 border border-stone-200 rounded-xl focus:outline-none focus:border-orange-400"
               placeholder="カードゲーム名を入力"
             />
           )}
@@ -376,12 +376,12 @@ export default function HostCreate() {
 
         {/* ── ルール・告知文 ── */}
         <div>
-          <label className="block text-sm text-slate-400 mb-1">ルール・告知文</label>
+          <label className="block text-sm text-stone-500 mb-1">ルール・告知文</label>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={3}
-            className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl focus:outline-none focus:border-indigo-500 resize-none"
+            className="w-full px-4 py-3 bg-stone-100 border border-stone-200 rounded-xl focus:outline-none focus:border-orange-400 resize-none"
             placeholder="ルールや注意事項を入力"
           />
         </div>
@@ -389,32 +389,32 @@ export default function HostCreate() {
         {/* ── 卓数 / タイマー ── */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm text-slate-400 mb-1">卓数</label>
+            <label className="block text-sm text-stone-500 mb-1">卓数</label>
             <input
               type="number"
               min={1}
               value={tableCount}
               onChange={(e) => setTableCount(Number(e.target.value))}
-              className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl focus:outline-none focus:border-indigo-500"
+              className="w-full px-4 py-3 bg-stone-100 border border-stone-200 rounded-xl focus:outline-none focus:border-orange-400"
             />
-            <p className="text-xs text-slate-500 mt-1">同時に対戦できる卓の数</p>
+            <p className="text-xs text-stone-400 mt-1">同時に対戦できる卓の数</p>
           </div>
           <div>
-            <label className="block text-sm text-slate-400 mb-1">対戦タイマー（分）</label>
+            <label className="block text-sm text-stone-500 mb-1">対戦タイマー（分）</label>
             <input
               type="number"
               min={1}
               value={timerMinutes}
               onChange={(e) => setTimerMinutes(Number(e.target.value))}
-              className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl focus:outline-none focus:border-indigo-500"
+              className="w-full px-4 py-3 bg-stone-100 border border-stone-200 rounded-xl focus:outline-none focus:border-orange-400"
             />
-            <p className="text-xs text-slate-500 mt-1">1対戦あたりの制限時間</p>
+            <p className="text-xs text-stone-400 mt-1">1対戦あたりの制限時間</p>
           </div>
         </div>
 
         {/* ── BO設定 ── */}
         <div>
-          <label className="block text-sm text-slate-400 mb-2">対戦形式</label>
+          <label className="block text-sm text-stone-500 mb-2">対戦形式</label>
           <div className="grid grid-cols-3 gap-2">
             {([1, 3, 5] as BestOf[]).map((bo) => (
               <button
@@ -423,65 +423,65 @@ export default function HostCreate() {
                 onClick={() => setBestOf(bo)}
                 className={`py-3 rounded-xl font-bold text-sm transition-colors border ${
                   bestOf === bo
-                    ? 'bg-indigo-600/20 border-indigo-500/50 text-indigo-300'
-                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-600'
+                    ? 'bg-orange-50 border-orange-300 text-orange-600'
+                    : 'bg-white border-stone-200 text-stone-500 hover:border-stone-300'
                 }`}
               >
                 BO{bo}
-                <span className="block text-xs font-normal mt-0.5 text-slate-500">
+                <span className="block text-xs font-normal mt-0.5 text-stone-400">
                   {bo === 1 ? '1本勝負' : `${Math.ceil(bo / 2)}本先取`}
                 </span>
               </button>
             ))}
           </div>
-          <p className="text-xs text-slate-500 mt-1">BO3=2本先取、BO5=3本先取。タイマーはマッチ全体に適用されます。</p>
+          <p className="text-xs text-stone-400 mt-1">BO3=2本先取、BO5=3本先取。タイマーはマッチ全体に適用されます。</p>
         </div>
 
         {/* ── バッファ / タイムアウト ── */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm text-slate-400 mb-1">感想戦バッファ（分）</label>
+            <label className="block text-sm text-stone-500 mb-1">感想戦バッファ（分）</label>
             <select
               value={afterBattleBuffer}
               onChange={(e) => setAfterBattleBuffer(Number(e.target.value))}
-              className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl focus:outline-none focus:border-indigo-500"
+              className="w-full px-4 py-3 bg-stone-100 border border-stone-200 rounded-xl focus:outline-none focus:border-orange-400"
             >
               {[0,1,2,3,4,5].map((v) => (
                 <option key={v} value={v}>{v}分</option>
               ))}
             </select>
-            <p className="text-xs text-slate-500 mt-1">対戦終了後、卓を確保する時間</p>
+            <p className="text-xs text-stone-400 mt-1">対戦終了後、卓を確保する時間</p>
           </div>
           <div>
-            <label className="block text-sm text-slate-400 mb-1">マッチングタイムアウト（分）</label>
+            <label className="block text-sm text-stone-500 mb-1">マッチングタイムアウト（分）</label>
             <select
               value={matchingTimeout}
               onChange={(e) => setMatchingTimeout(Number(e.target.value))}
-              className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl focus:outline-none focus:border-indigo-500"
+              className="w-full px-4 py-3 bg-stone-100 border border-stone-200 rounded-xl focus:outline-none focus:border-orange-400"
             >
               {[0,1,2,3,4,5].map((v) => (
                 <option key={v} value={v}>{v}分</option>
               ))}
             </select>
-            <p className="text-xs text-slate-500 mt-1">相手が見つからない場合の自動キャンセル時間</p>
+            <p className="text-xs text-stone-400 mt-1">相手が見つからない場合の自動キャンセル時間</p>
           </div>
         </div>
 
         {/* ── 最終マッチング時間 ── */}
         <div>
-          <label className="block text-sm text-slate-400 mb-1">最終マッチング時間（任意）</label>
+          <label className="block text-sm text-stone-500 mb-1">最終マッチング時間（任意）</label>
           <input
             type="time"
             value={matchingDeadline}
             onChange={(e) => setMatchingDeadline(e.target.value)}
-            className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl focus:outline-none focus:border-indigo-500"
+            className="w-full px-4 py-3 bg-stone-100 border border-stone-200 rounded-xl focus:outline-none focus:border-orange-400"
           />
-          <p className="text-xs text-slate-500 mt-1">この時刻以降は新規マッチングを受け付けません。未設定なら制限なし。</p>
+          <p className="text-xs text-stone-400 mt-1">この時刻以降は新規マッチングを受け付けません。未設定なら制限なし。</p>
         </div>
 
         {/* ── 席移動ルール ── */}
         <div>
-          <label className="block text-sm text-slate-400 mb-2">席移動ルール</label>
+          <label className="block text-sm text-stone-500 mb-2">席移動ルール</label>
           <div className="space-y-2">
             {([
               { value: 'winner-stays' as SeatRule, label: '勝ち残り', desc: '勝者がその卓に残り、敗者が移動します' },
@@ -492,8 +492,8 @@ export default function HostCreate() {
                 key={opt.value}
                 className={`flex items-start gap-3 p-3 rounded-xl cursor-pointer border transition-colors ${
                   seatRule === opt.value
-                    ? 'bg-indigo-600/20 border-indigo-500/50'
-                    : 'bg-slate-800 border-slate-700 hover:border-slate-600'
+                    ? 'bg-orange-50 border-orange-300'
+                    : 'bg-white border-stone-200 hover:border-stone-300'
                 }`}
               >
                 <input
@@ -502,11 +502,11 @@ export default function HostCreate() {
                   value={opt.value}
                   checked={seatRule === opt.value}
                   onChange={() => setSeatRule(opt.value)}
-                  className="mt-0.5 accent-indigo-500"
+                  className="mt-0.5 accent-orange-500"
                 />
                 <div>
                   <span className="font-bold text-sm">{opt.label}</span>
-                  <p className="text-xs text-slate-400 mt-0.5">{opt.desc}</p>
+                  <p className="text-xs text-stone-400 mt-0.5">{opt.desc}</p>
                 </div>
               </label>
             ))}
@@ -516,16 +516,16 @@ export default function HostCreate() {
         {/* ── 連勝制限 ── */}
         {seatRule !== 'both-leave' && (
           <div>
-            <label className="block text-sm text-slate-400 mb-1">
+            <label className="block text-sm text-stone-500 mb-1">
               連勝制限
-              <span className="text-xs text-slate-500 ml-1">
+              <span className="text-xs text-stone-400 ml-1">
                 ({seatRule === 'winner-stays' ? '連勝' : '連敗'}で強制離席)
               </span>
             </label>
             <select
               value={streakLimit}
               onChange={(e) => setStreakLimit(Number(e.target.value))}
-              className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl focus:outline-none focus:border-indigo-500"
+              className="w-full px-4 py-3 bg-stone-100 border border-stone-200 rounded-xl focus:outline-none focus:border-orange-400"
             >
               <option value={0}>なし（無制限）</option>
               {[2,3,4,5,6,7,8,9,10].map((v) => (
@@ -536,25 +536,25 @@ export default function HostCreate() {
         )}
 
         {/* ── テストモード ── */}
-        <label className="flex items-center gap-3 p-4 bg-slate-800 border border-slate-700 rounded-xl cursor-pointer">
+        <label className="flex items-center gap-3 p-4 bg-white border border-stone-200 rounded-xl cursor-pointer shadow-sm">
           <input
             type="checkbox"
             checked={isTest}
             onChange={(e) => setIsTest(e.target.checked)}
-            className="w-5 h-5 accent-yellow-500"
+            className="w-5 h-5 accent-amber-500"
           />
           <div>
             <span className="font-bold">テストモード</span>
-            <p className="text-sm text-slate-400">ダミープレイヤー・短縮タイマーで動作確認</p>
+            <p className="text-sm text-stone-500">ダミープレイヤー・短縮タイマーで動作確認</p>
           </div>
         </label>
 
         {/* ── プリセット保存 ── */}
-        <div className="border-t border-slate-700 pt-4">
+        <div className="border-t border-stone-200 pt-4">
           {!showPresetSave ? (
             <button
               onClick={() => setShowPresetSave(true)}
-              className="w-full py-2.5 text-sm text-slate-400 hover:text-slate-200 bg-slate-800 hover:bg-slate-750 border border-slate-700 rounded-xl transition-colors flex items-center justify-center gap-2"
+              className="w-full py-2.5 text-sm text-stone-500 hover:text-stone-700 bg-white hover:bg-stone-50 border border-stone-200 rounded-xl transition-colors flex items-center justify-center gap-2"
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
                 <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
@@ -562,33 +562,33 @@ export default function HostCreate() {
               この設定をプリセットとして保存
             </button>
           ) : presetSaved ? (
-            <div className="bg-emerald-900/30 border border-emerald-700/50 rounded-xl p-3 text-center">
-              <p className="text-sm text-emerald-300 font-bold">保存しました</p>
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center">
+              <p className="text-sm text-emerald-600 font-bold">保存しました</p>
             </div>
           ) : (
-            <div className="bg-slate-800 border border-slate-700 rounded-xl p-3">
+            <div className="bg-white border border-stone-200 rounded-xl p-3 shadow-sm">
               <div className="flex gap-2">
                 <input
                   value={presetName}
                   onChange={(e) => setPresetName(e.target.value)}
                   placeholder="プリセット名"
-                  className="flex-1 px-3 py-2 bg-slate-700 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  className="flex-1 px-3 py-2 bg-stone-100 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-orange-400"
                 />
                 <button
                   onClick={savePreset}
                   disabled={!presetName.trim() || savingPreset}
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-500 rounded-lg text-sm font-bold transition-colors"
+                  className="px-4 py-2 bg-orange-500 hover:bg-orange-600 disabled:bg-stone-200 disabled:text-stone-400 rounded-lg text-sm font-bold transition-colors text-white"
                 >
                   {savingPreset ? '...' : '保存'}
                 </button>
                 <button
                   onClick={() => { setShowPresetSave(false); setPresetName(''); }}
-                  className="px-3 py-2 text-slate-500 hover:text-slate-300 text-sm"
+                  className="px-3 py-2 text-stone-400 hover:text-stone-600 text-sm"
                 >
                   取消
                 </button>
               </div>
-              <p className="text-xs text-slate-500 mt-2">大会名・テストモードを除く全設定が保存されます（{presets.length}/{MAX_PRESETS}件）</p>
+              <p className="text-xs text-stone-400 mt-2">大会名・テストモードを除く全設定が保存されます（{presets.length}/{MAX_PRESETS}件）</p>
             </div>
           )}
         </div>
@@ -597,7 +597,7 @@ export default function HostCreate() {
         <button
           onClick={handleCreate}
           disabled={!canCreate || creating}
-          className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-500 rounded-xl font-bold text-lg transition-colors"
+          className="w-full py-4 bg-orange-500 hover:bg-orange-600 disabled:bg-stone-200 disabled:text-stone-400 rounded-xl font-bold text-lg transition-colors text-white shadow-md shadow-orange-500/20"
         >
           {creating ? '作成中...' : '大会を作成する'}
         </button>

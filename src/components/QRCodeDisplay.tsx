@@ -41,13 +41,13 @@ export default function QRCodeDisplay({ url, tournamentName }: QRCodeDisplayProp
 
   return (
     <div className="flex flex-col items-center gap-4">
-      <div ref={svgRef} className="bg-white p-4 rounded-xl">
+      <div ref={svgRef} className="bg-white p-4 rounded-xl shadow-sm">
         <QRCodeSVG value={url} size={256} />
       </div>
-      <p className="text-sm text-slate-400 break-all">{url}</p>
+      <p className="text-sm text-stone-400 break-all">{url}</p>
       <button
         onClick={handleDownload}
-        className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm transition-colors"
+        className="px-4 py-2 bg-stone-100 hover:bg-stone-200 rounded-lg text-sm transition-colors border border-stone-200"
       >
         QRコードをダウンロード
       </button>

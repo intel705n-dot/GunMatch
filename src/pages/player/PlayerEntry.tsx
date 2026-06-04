@@ -6,6 +6,7 @@ import {
 } from 'firebase/firestore';
 import { signInAnonymously, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import { db, auth } from '../../lib/firebase';
+import { useAuth } from '../../lib/AuthContext';
 import type { Tournament } from '../../lib/types';
 import Layout from '../../components/Layout';
 import CardGameBadge from '../../components/CardGameBadge';
@@ -15,6 +16,7 @@ const googleProvider = new GoogleAuthProvider();
 export default function PlayerEntry() {
   const { tournamentId } = useParams<{ tournamentId: string }>();
   const navigate = useNavigate();
+  const { user: authUser, loading: authLoading } = useAuth();
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [displayName, setDisplayName] = useState('');
   const [xId, setXId] = useState('');
@@ -23,7 +25,11 @@ export default function PlayerEntry() {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [googleUid, setGoogleUid] = useState<string | null>(null);
-  const isGoogleAuthed = auth.currentUser && !auth.currentUser.isAnonymous;
+  // While we're still checking whether this user can auto-recover (localStorage
+  // or Google-authed re-entry), don't flash the entry form. Otherwise QR-scan
+  // recovery shows a brief blank/empty form before redirecting.
+  const [recoveryChecked, setRecoveryChecked] = useState(false);
+  const isGoogleAuthed = authUser && !authUser.isAnonymous;
 
   useEffect(() => {
     if (!tournamentId) return;
@@ -33,37 +39,47 @@ export default function PlayerEntry() {
     return unsub;
   }, [tournamentId]);
 
-  // Check if already entered (via localStorage)
+  // Check if already entered. Wait for Firebase auth to finish loading,
+  // otherwise auth.currentUser is null on initial mount and Google-authed
+  // users miss the recovery redirect (which is the QR-scan-then-blank-screen
+  // bug — they had to reload to trigger this check after auth had loaded).
   useEffect(() => {
     if (!tournamentId) return;
+    if (authLoading) return;
+
     const savedPlayerId = localStorage.getItem(`gunmatch_player_${tournamentId}`);
     if (savedPlayerId) {
       navigate(`/play/${tournamentId}`, { replace: true });
       return;
     }
+
     // If user is already Google-authenticated, check if they're in this tournament
-    const currentUser = auth.currentUser;
-    if (currentUser && !currentUser.isAnonymous) {
+    if (authUser && !authUser.isAnonymous) {
       const q = query(
         collection(db, 'tournaments', tournamentId, 'players'),
-        where('googleUid', '==', currentUser.uid),
+        where('googleUid', '==', authUser.uid),
       );
       getDocs(q).then((snap) => {
         if (!snap.empty) {
           const playerId = snap.docs[0].id;
           localStorage.setItem(`gunmatch_player_${tournamentId}`, playerId);
           navigate(`/play/${tournamentId}`, { replace: true });
+        } else {
+          setRecoveryChecked(true);
         }
+      }).catch(() => {
+        setRecoveryChecked(true);
       });
+    } else {
+      setRecoveryChecked(true);
     }
-  }, [tournamentId, navigate]);
+  }, [tournamentId, navigate, authUser, authLoading]);
 
   const handleEntry = async () => {
     if (!tournamentId || !displayName.trim()) return;
     setError('');
     setSubmitting(true);
     try {
-      // Use existing Google auth if available, otherwise sign in anonymously
       const currentUser = auth.currentUser;
       if (!currentUser || currentUser.isAnonymous) {
         await signInAnonymously(auth);
@@ -126,13 +142,12 @@ export default function PlayerEntry() {
     }
   };
 
-  // Google login: find player in this tournament by googleUid, or enter as new
+  // Google login
   const handleGoogleLogin = async () => {
     if (!tournamentId) return;
     setError('');
     setSubmitting(true);
     try {
-      // Use existing Google auth if already signed in, otherwise popup
       let googleUid: string;
       let googleDisplayName: string;
       const currentUser = auth.currentUser;
@@ -145,7 +160,6 @@ export default function PlayerEntry() {
         googleDisplayName = result.user.displayName || 'Player';
       }
 
-      // Check if already in this tournament
       const q = query(
         collection(db, 'tournaments', tournamentId, 'players'),
         where('googleUid', '==', googleUid),
@@ -153,12 +167,10 @@ export default function PlayerEntry() {
       const snap = await getDocs(q);
 
       if (!snap.empty) {
-        // Found existing player - restore session
         const playerId = snap.docs[0].id;
         localStorage.setItem(`gunmatch_player_${tournamentId}`, playerId);
         navigate(`/play/${tournamentId}`, { replace: true });
       } else if (tournament?.entryOpen) {
-        // New entry with Google — show entry form for username input
         setGoogleUid(googleUid);
         setDisplayName(googleDisplayName !== 'Player' ? googleDisplayName : '');
         setMode('entry');
@@ -175,8 +187,17 @@ export default function PlayerEntry() {
     }
   };
 
-  if (!tournament) {
-    return <Layout><p className="text-center py-16 text-slate-400">読み込み中...</p></Layout>;
+  // Show loading until tournament data is ready AND we've checked whether
+  // this user can be auto-redirected (so we don't flash the entry form first).
+  if (!tournament || authLoading || !recoveryChecked) {
+    return (
+      <Layout>
+        <div className="text-center py-16">
+          <div className="inline-block w-8 h-8 border-2 border-orange-200 border-t-orange-500 rounded-full animate-spin mb-3" />
+          <p className="text-stone-400">読み込み中...</p>
+        </div>
+      </Layout>
+    );
   }
 
   if (!tournament.entryOpen && tournament.status === 'waiting') {
@@ -184,8 +205,8 @@ export default function PlayerEntry() {
       <Layout>
         <div className="text-center py-16">
           <h1 className="text-2xl font-bold mb-4">{tournament.name}</h1>
-          <p className="text-slate-400">エントリーはまだ開始されていません</p>
-          <p className="text-sm text-slate-500 mt-2">ホストがエントリーを開始するまでお待ちください</p>
+          <p className="text-stone-500">エントリーはまだ開始されていません</p>
+          <p className="text-sm text-stone-400 mt-2">ホストがエントリーを開始するまでお待ちください</p>
         </div>
       </Layout>
     );
@@ -201,16 +222,16 @@ export default function PlayerEntry() {
           </div>
         )}
         {tournament.hostName && (
-          <p className="text-xs text-slate-500 mb-2">主催: {tournament.hostName}</p>
+          <p className="text-xs text-stone-400 mb-2">主催: {tournament.hostName}</p>
         )}
         {tournament.description && (
-          <p className="text-sm text-slate-400 whitespace-pre-wrap">{tournament.description}</p>
+          <p className="text-sm text-stone-500 whitespace-pre-wrap">{tournament.description}</p>
         )}
       </div>
 
       {/* Google Login / Linked indicator */}
       {googleUid ? (
-        <div className="mb-4 p-3 bg-emerald-900/30 border border-emerald-700/50 rounded-xl flex items-center gap-3">
+        <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-3">
           <svg viewBox="0 0 24 24" className="w-5 h-5 shrink-0">
             <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
             <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
@@ -218,8 +239,8 @@ export default function PlayerEntry() {
             <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
           </svg>
           <div className="text-sm">
-            <p className="text-emerald-300 font-bold">Google連携済み</p>
-            <p className="text-emerald-400/60 text-xs">ハンドルネームを入力してエントリーしてください</p>
+            <p className="text-emerald-600 font-bold">Google連携済み</p>
+            <p className="text-emerald-500/80 text-xs">ハンドルネームを入力してエントリーしてください</p>
           </div>
         </div>
       ) : (
@@ -227,7 +248,7 @@ export default function PlayerEntry() {
           <button
             onClick={handleGoogleLogin}
             disabled={submitting}
-            className="w-full py-3.5 mb-4 bg-white hover:bg-gray-100 disabled:opacity-50 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-3 text-gray-700"
+            className="w-full py-3.5 mb-4 bg-white hover:bg-stone-50 disabled:opacity-50 rounded-xl font-bold text-sm transition-colors flex items-center justify-center gap-3 text-stone-700 border border-stone-200 shadow-sm"
           >
             <svg viewBox="0 0 24 24" className="w-5 h-5">
               <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
@@ -241,20 +262,20 @@ export default function PlayerEntry() {
           </button>
 
           <div className="flex items-center gap-3 mb-4">
-            <div className="flex-1 h-px bg-slate-700" />
-            <span className="text-xs text-slate-500">または</span>
-            <div className="flex-1 h-px bg-slate-700" />
+            <div className="flex-1 h-px bg-stone-200" />
+            <span className="text-xs text-stone-400">または</span>
+            <div className="flex-1 h-px bg-stone-200" />
           </div>
         </>
       )}
 
-      {/* Tab switch (hide when Google linked - always show entry form) */}
+      {/* Tab switch */}
       {!googleUid && (
-        <div className="flex mb-6 bg-slate-800 rounded-xl p-1">
+        <div className="flex mb-6 bg-stone-100 rounded-xl p-1">
           <button
             onClick={() => { setMode('entry'); setError(''); }}
             className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${
-              mode === 'entry' ? 'bg-indigo-600' : 'text-slate-400'
+              mode === 'entry' ? 'bg-orange-500 text-white' : 'text-stone-400'
             }`}
           >
             新規エントリー
@@ -262,7 +283,7 @@ export default function PlayerEntry() {
           <button
             onClick={() => { setMode('relogin'); setError(''); }}
             className={`flex-1 py-2 rounded-lg text-sm font-bold transition-colors ${
-              mode === 'relogin' ? 'bg-indigo-600' : 'text-slate-400'
+              mode === 'relogin' ? 'bg-orange-500 text-white' : 'text-stone-400'
             }`}
           >
             再ログイン
@@ -271,7 +292,7 @@ export default function PlayerEntry() {
       )}
 
       {error && (
-        <div className="mb-4 p-3 bg-red-900/50 border border-red-700 rounded-xl text-sm text-red-300">
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">
           {error}
         </div>
       )}
@@ -279,22 +300,22 @@ export default function PlayerEntry() {
       {(mode === 'entry' || googleUid) ? (
         <div className="space-y-4">
           <div>
-            <label className="block text-sm text-slate-400 mb-1">ハンドルネーム *</label>
+            <label className="block text-sm text-stone-500 mb-1">ハンドルネーム *</label>
             <input
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl focus:outline-none focus:border-indigo-500 text-lg"
+              className="w-full px-4 py-3 bg-stone-100 border border-stone-200 rounded-xl focus:outline-none focus:border-orange-400 focus:ring-1 focus:ring-orange-400 text-lg"
               placeholder="表示名を入力"
             />
           </div>
           <div>
-            <label className="block text-sm text-slate-400 mb-1">X ID（任意）</label>
+            <label className="block text-sm text-stone-500 mb-1">X ID（任意）</label>
             <div className="flex items-center">
-              <span className="text-slate-500 mr-1">@</span>
+              <span className="text-stone-400 mr-1">@</span>
               <input
                 value={xId}
                 onChange={(e) => setXId(e.target.value)}
-                className="flex-1 px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl focus:outline-none focus:border-indigo-500"
+                className="flex-1 px-4 py-3 bg-stone-100 border border-stone-200 rounded-xl focus:outline-none focus:border-orange-400"
                 placeholder="x_id"
               />
             </div>
@@ -302,7 +323,7 @@ export default function PlayerEntry() {
           <button
             onClick={handleEntry}
             disabled={!displayName.trim() || submitting || !tournament.entryOpen}
-            className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-500 rounded-xl font-bold text-lg transition-colors"
+            className="w-full py-4 bg-orange-500 hover:bg-orange-600 disabled:bg-stone-200 disabled:text-stone-400 rounded-xl font-bold text-lg transition-colors text-white"
           >
             {submitting ? 'エントリー中...' : !tournament.entryOpen ? 'エントリー締め切り' : 'エントリーする'}
           </button>
@@ -310,13 +331,13 @@ export default function PlayerEntry() {
       ) : (
         <div className="space-y-4">
           <div>
-            <label className="block text-sm text-slate-400 mb-1">X ID *</label>
+            <label className="block text-sm text-stone-500 mb-1">X ID *</label>
             <div className="flex items-center">
-              <span className="text-slate-500 mr-1">@</span>
+              <span className="text-stone-400 mr-1">@</span>
               <input
                 value={reLoginXId}
                 onChange={(e) => setReLoginXId(e.target.value)}
-                className="flex-1 px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl focus:outline-none focus:border-indigo-500"
+                className="flex-1 px-4 py-3 bg-stone-100 border border-stone-200 rounded-xl focus:outline-none focus:border-orange-400"
                 placeholder="x_id"
               />
             </div>
@@ -324,7 +345,7 @@ export default function PlayerEntry() {
           <button
             onClick={handleReLogin}
             disabled={!reLoginXId.trim() || submitting}
-            className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 disabled:text-slate-500 rounded-xl font-bold text-lg transition-colors"
+            className="w-full py-4 bg-orange-500 hover:bg-orange-600 disabled:bg-stone-200 disabled:text-stone-400 rounded-xl font-bold text-lg transition-colors text-white"
           >
             {submitting ? '復元中...' : '再ログイン'}
           </button>

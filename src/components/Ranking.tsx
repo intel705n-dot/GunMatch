@@ -63,10 +63,10 @@ export default function Ranking({ players, matches, tournamentName, currentPlaye
   });
 
   return (
-    <div className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+    <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-sm">
       {/* SNS shareable header */}
-      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-5 text-center">
-        <p className="text-xs text-indigo-200">{today}</p>
+      <div className="bg-gradient-to-r from-orange-500 to-orange-400 p-5 text-center text-white">
+        <p className="text-xs text-orange-100">{today}</p>
         <h2 className="text-xl font-bold mt-1">{tournamentName}</h2>
         {myRank && (
           <p className="text-3xl font-bold mt-2">
@@ -79,7 +79,7 @@ export default function Ranking({ players, matches, tournamentName, currentPlaye
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-700 text-slate-400">
+            <tr className="border-b border-stone-200 text-stone-400">
               <th className="py-2 px-2 text-left">#</th>
               <th className="py-2 px-2 text-left">プレイヤー</th>
               <th className="py-2 px-2 text-right">W</th>
@@ -98,8 +98,8 @@ export default function Ranking({ players, matches, tournamentName, currentPlaye
               return (
                 <tr
                   key={p.id}
-                  className={`border-b border-slate-700/50 ${
-                    isCurrent ? 'bg-indigo-900/30' : ''
+                  className={`border-b border-stone-100 ${
+                    isCurrent ? 'bg-orange-50' : ''
                   } ${i < 3 ? 'font-bold' : ''}`}
                 >
                   <td className="py-2 px-2">
@@ -107,15 +107,15 @@ export default function Ranking({ players, matches, tournamentName, currentPlaye
                   </td>
                   <td className="py-2 px-2">
                     {p.displayName}
-                    {isCurrent && <span className="ml-1 text-xs text-indigo-400">← You</span>}
+                    {isCurrent && <span className="ml-1 text-xs text-orange-500">← You</span>}
                   </td>
-                  <td className="py-2 px-2 text-right text-emerald-400">{p.wins}</td>
-                  <td className="py-2 px-2 text-right text-red-400">{p.losses}</td>
-                  <td className="py-2 px-2 text-right text-slate-300">{rate}%</td>
-                  <td className="py-2 px-2 text-right text-amber-400">
+                  <td className="py-2 px-2 text-right text-emerald-500">{p.wins}</td>
+                  <td className="py-2 px-2 text-right text-red-500">{p.losses}</td>
+                  <td className="py-2 px-2 text-right text-stone-600">{rate}%</td>
+                  <td className="py-2 px-2 text-right text-amber-500">
                     {(p.maxStreak ?? 0) >= 2 ? p.maxStreak : '-'}
                   </td>
-                  <td className="py-2 px-2 text-right text-amber-400">{omw}%</td>
+                  <td className="py-2 px-2 text-right text-amber-500">{omw}%</td>
                 </tr>
               );
             })}
@@ -125,7 +125,7 @@ export default function Ranking({ players, matches, tournamentName, currentPlaye
 
       {/* Scoring explanation */}
       <div className="p-3 text-center">
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-stone-400">
           順位: 勝利数 → 勝率 → OMW%（対戦相手の平均勝率、下限25%）
         </p>
       </div>

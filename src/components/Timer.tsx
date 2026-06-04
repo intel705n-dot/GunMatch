@@ -25,7 +25,7 @@ export default function Timer({ endTime, onExpire, className = '' }: TimerProps)
   const isWarning = remaining <= 60 && remaining > 0;
 
   return (
-    <span className={`font-mono text-2xl font-bold ${isWarning ? 'text-red-400 animate-pulse' : 'text-emerald-400'} ${className}`}>
+    <span className={`font-mono text-2xl font-bold ${isWarning ? 'text-red-500 animate-pulse' : 'text-orange-500'} ${className}`}>
       {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}
     </span>
   );

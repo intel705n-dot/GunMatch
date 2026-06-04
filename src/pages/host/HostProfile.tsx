@@ -61,7 +61,7 @@ export default function HostProfile() {
     navigate('/host/login', { replace: true });
   };
 
-  if (loading || !user) return <Layout><p className="text-center py-16 text-slate-400">読み込み中...</p></Layout>;
+  if (loading || !user) return <Layout><p className="text-center py-16 text-stone-400">読み込み中...</p></Layout>;
 
   const providerIds = user.providerData.map((p) => p.providerId);
   const isGoogle = providerIds.includes('google.com');
@@ -70,14 +70,14 @@ export default function HostProfile() {
   return (
     <Layout>
       <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => navigate('/host')} className="text-slate-400 hover:text-white text-2xl">←</button>
+        <button onClick={() => navigate('/host')} className="text-stone-400 hover:text-stone-700 text-2xl">←</button>
         <h1 className="text-2xl font-bold">マイページ</h1>
       </div>
 
       {/* Profile card */}
-      <div className="bg-slate-800 rounded-xl p-5 border border-slate-700 mb-4">
+      <div className="bg-white rounded-2xl p-5 border border-stone-200 mb-4 shadow-sm">
         <div className="flex items-center gap-4 mb-4">
-          <div className="w-14 h-14 rounded-full bg-indigo-600 flex items-center justify-center text-2xl font-bold shrink-0">
+          <div className="w-14 h-14 rounded-full bg-orange-500 flex items-center justify-center text-2xl font-bold shrink-0 text-white">
             {(profile?.displayName || '?')[0]}
           </div>
           <div className="flex-1 min-w-0">
@@ -86,19 +86,19 @@ export default function HostProfile() {
                 <input
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
-                  className="flex-1 px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg focus:outline-none focus:border-indigo-500 text-sm"
+                  className="flex-1 px-3 py-2 bg-stone-100 border border-stone-200 rounded-lg focus:outline-none focus:border-orange-400 text-sm"
                   autoFocus
                 />
                 <button
                   onClick={handleSave}
                   disabled={!editName.trim() || saving}
-                  className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded-lg text-xs font-bold"
+                  className="px-3 py-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 rounded-lg text-xs font-bold text-white"
                 >
                   {saving ? '...' : '保存'}
                 </button>
                 <button
                   onClick={() => { setEditing(false); setEditName(profile?.displayName || ''); }}
-                  className="px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs"
+                  className="px-3 py-2 bg-stone-100 hover:bg-stone-200 rounded-lg text-xs"
                 >
                   取消
                 </button>
@@ -108,41 +108,41 @@ export default function HostProfile() {
                 <p className="text-lg font-bold truncate">{profile?.displayName}</p>
                 <button
                   onClick={() => setEditing(true)}
-                  className="text-xs text-indigo-400 hover:text-indigo-300 shrink-0"
+                  className="text-xs text-orange-500 hover:text-orange-600 shrink-0"
                 >
                   編集
                 </button>
               </div>
             )}
-            <p className="text-xs text-slate-500 mt-0.5">ホスト</p>
+            <p className="text-xs text-stone-400 mt-0.5">ホスト</p>
           </div>
         </div>
       </div>
 
       {/* Login info */}
-      <div className="bg-slate-800 rounded-xl p-5 border border-slate-700 mb-4">
-        <h3 className="text-sm font-bold text-slate-300 mb-3">ログイン情報</h3>
+      <div className="bg-white rounded-2xl p-5 border border-stone-200 mb-4 shadow-sm">
+        <h3 className="text-sm font-bold text-stone-600 mb-3">ログイン情報</h3>
         <div className="space-y-3 text-sm">
           {user.email && (
             <div className="flex justify-between">
-              <span className="text-slate-400">メールアドレス</span>
-              <span className="text-slate-200">{user.email}</span>
+              <span className="text-stone-400">メールアドレス</span>
+              <span className="text-stone-700">{user.email}</span>
             </div>
           )}
           <div className="flex justify-between">
-            <span className="text-slate-400">認証方法</span>
+            <span className="text-stone-400">認証方法</span>
             <div className="flex gap-2">
               {isGoogle && (
-                <span className="px-2 py-0.5 bg-blue-900/50 text-blue-300 rounded-full text-xs font-bold">Google</span>
+                <span className="px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-xs font-bold">Google</span>
               )}
               {isEmail && (
-                <span className="px-2 py-0.5 bg-emerald-900/50 text-emerald-300 rounded-full text-xs font-bold">メール/パスワード</span>
+                <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 rounded-full text-xs font-bold">メール/パスワード</span>
               )}
             </div>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate-400">UID</span>
-            <span className="text-slate-500 text-xs font-mono truncate max-w-[180px]">{user.uid}</span>
+            <span className="text-stone-400">UID</span>
+            <span className="text-stone-400 text-xs font-mono truncate max-w-[180px]">{user.uid}</span>
           </div>
         </div>
       </div>
@@ -150,7 +150,7 @@ export default function HostProfile() {
       {/* Help */}
       <button
         onClick={() => navigate('/host/help')}
-        className="w-full py-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl font-bold text-slate-300 transition-colors mb-3"
+        className="w-full py-3 bg-white hover:bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-600 transition-colors mb-3 shadow-sm"
       >
         ヘルプ・操作マニュアル
       </button>
@@ -158,7 +158,7 @@ export default function HostProfile() {
       {/* Logout */}
       <button
         onClick={handleLogout}
-        className="w-full py-3 bg-slate-700 hover:bg-red-700 rounded-xl font-bold text-red-300 transition-colors"
+        className="w-full py-3 bg-stone-100 hover:bg-red-50 rounded-xl font-bold text-red-500 transition-colors border border-stone-200"
       >
         ログアウト
       </button>

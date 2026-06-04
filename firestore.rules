@@ -1,37 +1,117 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /hosts/{hostId} {
-      allow read: if true;
-      allow write: if request.auth != null && request.auth.uid == hostId;
+
+    // ============ Helpers ============
+    function isAuth() {
+      return request.auth != null;
     }
 
+    function isTournamentHost(tournamentId) {
+      return isAuth()
+        && get(/databases/$(database)/documents/tournaments/$(tournamentId)).data.hostUid == request.auth.uid;
+    }
+
+    function fieldUnchanged(field) {
+      return request.resource.data[field] == resource.data[field];
+    }
+
+    function isValidName(value, maxLen) {
+      return value is string && value.size() > 0 && value.size() <= maxLen;
+    }
+
+    // ============ Hosts (profile) ============
+    match /hosts/{hostId} {
+      allow read: if true;
+      allow create, update: if isAuth()
+                            && request.auth.uid == hostId
+                            && isValidName(request.resource.data.displayName, 50);
+      allow delete: if false; // Profile deletion not supported
+
+      // ===== Presets (host only) =====
+      match /presets/{presetId} {
+        allow read, write: if isAuth() && request.auth.uid == hostId;
+      }
+    }
+
+    // ============ Tournaments ============
     match /tournaments/{tournamentId} {
       allow read: if true;
-      allow create: if request.auth != null
-                    && request.resource.data.hostUid == request.auth.uid;
-      allow update: if request.auth != null;
-      allow delete: if request.auth != null
-                    && resource.data.hostUid == request.auth.uid;
 
+      // Create: must be the declared host, with a valid name
+      allow create: if isAuth()
+                    && request.resource.data.hostUid == request.auth.uid
+                    && isValidName(request.resource.data.name, 100);
+
+      // Update: host only, hostUid immutable
+      allow update: if isAuth()
+                    && resource.data.hostUid == request.auth.uid
+                    && request.resource.data.hostUid == resource.data.hostUid;
+
+      // Delete: host only
+      allow delete: if isAuth() && resource.data.hostUid == request.auth.uid;
+
+      // ============ Players ============
       match /players/{playerId} {
         allow read: if true;
-        allow create: if request.auth != null;
-        allow update: if request.auth != null;
-        allow delete: if request.auth != null;
+
+        // Create: any auth user, but initial stats must be zero
+        allow create: if isAuth()
+                      && isValidName(request.resource.data.displayName, 50)
+                      && request.resource.data.wins == 0
+                      && request.resource.data.losses == 0
+                      && request.resource.data.currentStreak == 0
+                      && request.resource.data.maxStreak == 0
+                      && request.resource.data.dropped == false;
+
+        // Update: host can update anything; non-hosts cannot change identity-defining fields
+        allow update: if isAuth()
+                      && (
+                        isTournamentHost(tournamentId)
+                        || (
+                          fieldUnchanged('entryNumber')
+                          && fieldUnchanged('createdAt')
+                          && fieldUnchanged('isProxy')
+                        )
+                      );
+
+        // Delete: host only
+        allow delete: if isTournamentHost(tournamentId);
       }
 
+      // ============ Matches ============
       match /matches/{matchId} {
         allow read: if true;
-        allow create: if request.auth != null;
-        allow update: if request.auth != null;
-        allow delete: if request.auth != null;
+
+        // Create: any auth user (matching service runs on client)
+        allow create: if isAuth();
+
+        // Update: host can update anything; non-hosts cannot change identity-defining fields
+        // (player1Id/player2Id/tableNumber/bestOf/startedAt/timerSeconds are set at match creation
+        //  and must not be modified afterward — only winnerId/status/games/buffer/seatKeeper change)
+        allow update: if isAuth()
+                      && (
+                        isTournamentHost(tournamentId)
+                        || (
+                          fieldUnchanged('player1Id')
+                          && fieldUnchanged('player2Id')
+                          && fieldUnchanged('tableNumber')
+                          && fieldUnchanged('bestOf')
+                          && fieldUnchanged('startedAt')
+                          && fieldUnchanged('timerSeconds')
+                        )
+                      );
+
+        // Delete: host only (match correction is via update)
+        allow delete: if isTournamentHost(tournamentId);
       }
 
+      // ============ Queue ============
       match /queue/{queueId} {
-        allow read: if request.auth != null;
-        allow create: if request.auth != null;
-        allow delete: if request.auth != null;
+        allow read: if isAuth();
+        allow create: if isAuth();
+        allow update: if false;
+        allow delete: if isAuth();
       }
     }
   }

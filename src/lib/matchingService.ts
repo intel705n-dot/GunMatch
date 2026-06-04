@@ -12,6 +12,10 @@ import {
   Timestamp,
   onSnapshot,
   increment,
+  runTransaction,
+  type DocumentData,
+  type DocumentReference,
+  type Transaction,
   type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -230,9 +234,71 @@ export async function tryMatchPlayers(tournamentId: string): Promise<Match | nul
 }
 
 /**
+ * Private helper — performs the writes that finalize a match (mark finished,
+ * increment wins/losses, update streak). Must be called from inside a
+ * Firestore transaction, and BEFORE any other writes have been queued in the
+ * transaction (Firestore requires all reads to precede all writes).
+ *
+ * The transaction wrapper around the caller is what makes wins/losses safe
+ * from double-count: if two clients race to finalize the same match, only the
+ * first commits; the second retries, observes status === 'finished', and
+ * bails out without re-incrementing.
+ */
+async function finalizeMatchInTx(
+  tx: Transaction,
+  tournamentId: string,
+  matchRef: DocumentReference,
+  tournRef: DocumentReference,
+  matchData: DocumentData,
+  winnerId: string,
+  games?: { winnerId: string }[],
+): Promise<void> {
+  const tournSnap = await tx.get(tournRef);
+  if (!tournSnap.exists()) return;
+  const tourn = tournSnap.data() as Tournament;
+  const bufferSeconds = tourn.isTest ? tourn.afterBattleBuffer : tourn.afterBattleBuffer * 60;
+
+  const loserId = matchData.player1Id === winnerId ? matchData.player2Id : matchData.player1Id;
+  const winnerRef = doc(db, 'tournaments', tournamentId, 'players', winnerId);
+  const loserRef = doc(db, 'tournaments', tournamentId, 'players', loserId);
+
+  const winnerSnap = await tx.get(winnerRef);
+  const loserSnap = await tx.get(loserRef);
+  if (!winnerSnap.exists() || !loserSnap.exists()) return;
+  const winnerData = winnerSnap.data();
+
+  const newWinnerStreak = (winnerData?.currentStreak ?? 0) + 1;
+  const winnerMaxStreak = Math.max(winnerData?.maxStreak ?? 0, newWinnerStreak);
+  const bufferUntil = Timestamp.fromMillis(Date.now() + bufferSeconds * 1000);
+
+  const matchUpdate: Record<string, unknown> = {
+    status: 'finished',
+    winnerId,
+    finishedAt: Timestamp.now(),
+    bufferUntil,
+  };
+  if (games) matchUpdate.games = games;
+
+  tx.update(matchRef, matchUpdate);
+  tx.update(winnerRef, {
+    wins: increment(1),
+    currentStreak: newWinnerStreak,
+    maxStreak: winnerMaxStreak,
+  });
+  tx.update(loserRef, {
+    losses: increment(1),
+    currentStreak: 0,
+  });
+}
+
+/**
  * Report a single game result within a BO match.
  * For BO1, this also finalizes the match.
  * Returns whether the match is now finished.
+ *
+ * Wrapped in a Firestore transaction so that the read-then-write of the
+ * games array (and any subsequent finalize) is atomic. Concurrent reports
+ * cannot both observe the same pre-state.
  */
 export async function reportGameResult(
   tournamentId: string,
@@ -240,36 +306,46 @@ export async function reportGameResult(
   gameWinnerId: string,
 ): Promise<{ finished: boolean; matchWinnerId: string | null }> {
   const matchRef = doc(db, 'tournaments', tournamentId, 'matches', matchId);
-  const matchSnap = await getDoc(matchRef);
-  if (!matchSnap.exists()) return { finished: false, matchWinnerId: null };
-  const matchData = matchSnap.data();
+  const tournRef = doc(db, 'tournaments', tournamentId);
 
-  const bestOf: BestOf = matchData.bestOf ?? 1;
-  const games = [...(matchData.games || []), { winnerId: gameWinnerId }];
-  const winsNeeded = Math.ceil(bestOf / 2);
+  return await runTransaction(db, async (tx) => {
+    const matchSnap = await tx.get(matchRef);
+    if (!matchSnap.exists()) return { finished: false, matchWinnerId: null };
+    const matchData = matchSnap.data();
 
-  // Count wins
-  const p1Wins = games.filter((g: { winnerId: string }) => g.winnerId === matchData.player1Id).length;
-  const p2Wins = games.filter((g: { winnerId: string }) => g.winnerId === matchData.player2Id).length;
+    // Idempotency: already-finished matches must not accept new games.
+    if (matchData.status === 'finished') {
+      return { finished: true, matchWinnerId: matchData.winnerId ?? null };
+    }
 
-  const matchWinnerId = p1Wins >= winsNeeded ? matchData.player1Id :
-                        p2Wins >= winsNeeded ? matchData.player2Id : null;
+    const bestOf: BestOf = matchData.bestOf ?? 1;
+    const games = [...(matchData.games || []), { winnerId: gameWinnerId }];
+    const winsNeeded = Math.ceil(bestOf / 2);
 
-  if (matchWinnerId) {
-    // Match finished — finalize
-    await reportResult(tournamentId, matchId, matchWinnerId, games);
-    return { finished: true, matchWinnerId };
-  } else {
-    // Match continues — just update games array
-    await updateDoc(matchRef, { games });
-    return { finished: false, matchWinnerId: null };
-  }
+    const p1Wins = games.filter((g: { winnerId: string }) => g.winnerId === matchData.player1Id).length;
+    const p2Wins = games.filter((g: { winnerId: string }) => g.winnerId === matchData.player2Id).length;
+
+    const matchWinnerId = p1Wins >= winsNeeded ? matchData.player1Id :
+                          p2Wins >= winsNeeded ? matchData.player2Id : null;
+
+    if (matchWinnerId) {
+      await finalizeMatchInTx(tx, tournamentId, matchRef, tournRef, matchData, matchWinnerId, games);
+      return { finished: true, matchWinnerId };
+    } else {
+      tx.update(matchRef, { games });
+      return { finished: false, matchWinnerId: null };
+    }
+  });
 }
 
 /**
- * Correct a game result within a BO match.
+ * Correct a game result within an ongoing BO match.
  * Swaps the winner of a specific game index.
- * Returns whether the match should now be finished (if correction causes someone to reach winsNeeded).
+ * If the correction causes someone to reach winsNeeded, the match finalizes
+ * within the same transaction.
+ *
+ * Note: PlayerMain only exposes correction during ongoing matches. Correction
+ * of already-finished matches goes through HostManage.updateMatchWinner.
  */
 export async function correctGameResult(
   tournamentId: string,
@@ -277,37 +353,55 @@ export async function correctGameResult(
   gameIndex: number,
 ): Promise<{ finished: boolean; matchWinnerId: string | null }> {
   const matchRef = doc(db, 'tournaments', tournamentId, 'matches', matchId);
-  const matchSnap = await getDoc(matchRef);
-  if (!matchSnap.exists()) return { finished: false, matchWinnerId: null };
-  const matchData = matchSnap.data();
+  const tournRef = doc(db, 'tournaments', tournamentId);
 
-  const games = [...(matchData.games || [])];
-  if (gameIndex < 0 || gameIndex >= games.length) return { finished: false, matchWinnerId: null };
+  return await runTransaction(db, async (tx) => {
+    const matchSnap = await tx.get(matchRef);
+    if (!matchSnap.exists()) return { finished: false, matchWinnerId: null };
+    const matchData = matchSnap.data();
 
-  // Swap winner
-  const currentWinner = games[gameIndex].winnerId;
-  const newWinner = currentWinner === matchData.player1Id ? matchData.player2Id : matchData.player1Id;
-  games[gameIndex] = { winnerId: newWinner };
+    if (matchData.status === 'finished') {
+      // Defensive: PlayerMain UI prevents this, but if it ever happens, no-op.
+      return { finished: true, matchWinnerId: matchData.winnerId ?? null };
+    }
 
-  const bestOf: BestOf = matchData.bestOf ?? 1;
-  const winsNeeded = Math.ceil(bestOf / 2);
-  const p1Wins = games.filter((g: { winnerId: string }) => g.winnerId === matchData.player1Id).length;
-  const p2Wins = games.filter((g: { winnerId: string }) => g.winnerId === matchData.player2Id).length;
+    const games = [...(matchData.games || [])];
+    if (gameIndex < 0 || gameIndex >= games.length) {
+      return { finished: false, matchWinnerId: null };
+    }
 
-  const matchWinnerId = p1Wins >= winsNeeded ? matchData.player1Id :
-                        p2Wins >= winsNeeded ? matchData.player2Id : null;
+    const currentWinner = games[gameIndex].winnerId;
+    const newWinner = currentWinner === matchData.player1Id ? matchData.player2Id : matchData.player1Id;
+    games[gameIndex] = { winnerId: newWinner };
 
-  if (matchWinnerId) {
-    await reportResult(tournamentId, matchId, matchWinnerId, games);
-    return { finished: true, matchWinnerId };
-  } else {
-    await updateDoc(matchRef, { games });
-    return { finished: false, matchWinnerId: null };
-  }
+    const bestOf: BestOf = matchData.bestOf ?? 1;
+    const winsNeeded = Math.ceil(bestOf / 2);
+    const p1Wins = games.filter((g: { winnerId: string }) => g.winnerId === matchData.player1Id).length;
+    const p2Wins = games.filter((g: { winnerId: string }) => g.winnerId === matchData.player2Id).length;
+
+    const matchWinnerId = p1Wins >= winsNeeded ? matchData.player1Id :
+                          p2Wins >= winsNeeded ? matchData.player2Id : null;
+
+    if (matchWinnerId) {
+      await finalizeMatchInTx(tx, tournamentId, matchRef, tournRef, matchData, matchWinnerId, games);
+      return { finished: true, matchWinnerId };
+    } else {
+      tx.update(matchRef, { games });
+      return { finished: false, matchWinnerId: null };
+    }
+  });
 }
 
 /**
  * Finalize a match with a winner. Updates stats, streaks, buffer.
+ *
+ * Wrapped in a Firestore transaction — concurrent reports of the same match
+ * (same client double-tap, two clients reporting simultaneously, network
+ * retries) cannot double-increment wins/losses. The first transaction commits;
+ * any concurrent transaction retries, sees status === 'finished', and bails.
+ *
+ * Match correction for already-finished matches goes through
+ * HostManage.updateMatchWinner directly (which does its own stat reversal).
  */
 export async function reportResult(
   tournamentId: string,
@@ -316,50 +410,19 @@ export async function reportResult(
   games?: { winnerId: string }[],
 ) {
   const matchRef = doc(db, 'tournaments', tournamentId, 'matches', matchId);
-  const matchSnap = await getDoc(matchRef);
-  if (!matchSnap.exists()) return;
-  const matchData = matchSnap.data();
+  const tournRef = doc(db, 'tournaments', tournamentId);
 
-  const tournDoc = await getDoc(doc(db, 'tournaments', tournamentId));
-  const tourn = tournDoc.data() as Tournament;
-  const bufferSeconds = tourn.isTest ? tourn.afterBattleBuffer : tourn.afterBattleBuffer * 60;
+  await runTransaction(db, async (tx) => {
+    const matchSnap = await tx.get(matchRef);
+    if (!matchSnap.exists()) return;
+    const matchData = matchSnap.data();
 
-  const loserId = matchData.player1Id === winnerId ? matchData.player2Id : matchData.player1Id;
+    // Atomic idempotency — concurrent reports cannot both pass this check
+    // because the transaction's snapshot isolation forces a retry on the
+    // client whose read became stale.
+    if (matchData.status === 'finished') return;
 
-  const bufferUntil = Timestamp.fromMillis(Date.now() + bufferSeconds * 1000);
-
-  const updateData: Record<string, unknown> = {
-    status: 'finished',
-    winnerId,
-    finishedAt: Timestamp.now(),
-    bufferUntil,
-  };
-  if (games) {
-    updateData.games = games;
-  }
-  await updateDoc(matchRef, updateData);
-
-  // Update wins/losses
-  const winnerRef = doc(db, 'tournaments', tournamentId, 'players', winnerId);
-  const loserRef = doc(db, 'tournaments', tournamentId, 'players', loserId);
-
-  // Update streaks
-  const winnerSnap = await getDoc(winnerRef);
-  const loserSnap = await getDoc(loserRef);
-  const winnerData = winnerSnap.data();
-  const loserData = loserSnap.data();
-
-  const newWinnerStreak = (winnerData?.currentStreak ?? 0) + 1;
-  const winnerMaxStreak = Math.max(winnerData?.maxStreak ?? 0, newWinnerStreak);
-
-  await updateDoc(winnerRef, {
-    wins: increment(1),
-    currentStreak: newWinnerStreak,
-    maxStreak: winnerMaxStreak,
-  });
-  await updateDoc(loserRef, {
-    losses: increment(1),
-    currentStreak: 0,
+    await finalizeMatchInTx(tx, tournamentId, matchRef, tournRef, matchData, winnerId, games);
   });
 }
 

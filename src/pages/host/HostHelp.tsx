@@ -174,18 +174,18 @@ function Accordion({ sections }: { sections: Section[] }) {
   return (
     <div className="space-y-2">
       {sections.map((s, i) => (
-        <div key={i} className="bg-slate-800 rounded-xl border border-slate-700 overflow-hidden">
+        <div key={i} className="bg-white rounded-xl border border-stone-200 overflow-hidden shadow-sm">
           <button
             onClick={() => setOpenIndex(openIndex === i ? null : i)}
-            className="w-full text-left px-4 py-3 flex items-center justify-between hover:bg-slate-750 transition-colors"
+            className="w-full text-left px-4 py-3 flex items-center justify-between hover:bg-stone-50 transition-colors"
           >
             <span className="font-bold text-sm">{s.title}</span>
-            <span className="text-slate-400 text-lg">{openIndex === i ? '−' : '+'}</span>
+            <span className="text-stone-400 text-lg">{openIndex === i ? '−' : '+'}</span>
           </button>
           {openIndex === i && (
             <div className="px-4 pb-4 space-y-2">
               {s.content.map((line, j) => (
-                <p key={j} className="text-sm text-slate-300 leading-relaxed">{line}</p>
+                <p key={j} className="text-sm text-stone-600 leading-relaxed">{line}</p>
               ))}
             </div>
           )}
@@ -202,27 +202,27 @@ export default function HostHelp() {
   return (
     <Layout>
       <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => navigate(-1)} className="text-slate-400 hover:text-white text-2xl">←</button>
+        <button onClick={() => navigate(-1)} className="text-stone-400 hover:text-stone-700 text-2xl">←</button>
         <h1 className="text-2xl font-bold">ヘルプ</h1>
       </div>
 
       {/* Tabs */}
-      <div className="flex mb-4 bg-slate-800 rounded-xl p-1">
+      <div className="flex mb-4 bg-stone-100 rounded-xl p-1">
         <button
           onClick={() => setTab('host')}
-          className={`flex-1 py-2 rounded-lg text-xs font-bold transition-colors ${tab === 'host' ? 'bg-indigo-600' : 'text-slate-400'}`}
+          className={`flex-1 py-2 rounded-lg text-xs font-bold transition-colors ${tab === 'host' ? 'bg-orange-500 text-white' : 'text-stone-400'}`}
         >
           ホスト向け
         </button>
         <button
           onClick={() => setTab('player')}
-          className={`flex-1 py-2 rounded-lg text-xs font-bold transition-colors ${tab === 'player' ? 'bg-indigo-600' : 'text-slate-400'}`}
+          className={`flex-1 py-2 rounded-lg text-xs font-bold transition-colors ${tab === 'player' ? 'bg-orange-500 text-white' : 'text-stone-400'}`}
         >
           プレイヤー向け
         </button>
         <button
           onClick={() => setTab('faq')}
-          className={`flex-1 py-2 rounded-lg text-xs font-bold transition-colors ${tab === 'faq' ? 'bg-indigo-600' : 'text-slate-400'}`}
+          className={`flex-1 py-2 rounded-lg text-xs font-bold transition-colors ${tab === 'faq' ? 'bg-orange-500 text-white' : 'text-stone-400'}`}
         >
           よくある質問
         </button>
